@@ -6,7 +6,7 @@ StayWise helps a short-term rental owner keep reservation details, compare simil
 
 ## Demo and team
 
-- Public demo: **To be deployed**
+- Public demo: https://staywise-martim004.streamlit.app
 - Team members and student numbers: **Add all names and student numbers before course submission.**
 - Repository: `https://github.com/Martim004/staywise`
 
