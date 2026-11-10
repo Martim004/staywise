@@ -1,0 +1,1 @@
+"""StayWise rental management application."""
