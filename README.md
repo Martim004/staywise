@@ -49,7 +49,7 @@ Dates use `YYYY-MM-DD`. Status must be `confirmed`, `completed`, or `cancelled`.
 
 ## Public demo deployment
 
-The demo can be deployed from this public GitHub repository on [Streamlit Community Cloud](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app). Set `STAYWISE_DEMO=1` in the app's deployment settings so it starts with fictional demo records. Add the resulting app URL above and to the team-project submission README details before submission. Do not deploy personal guest records.
+The demo can be deployed from this public GitHub repository on [Streamlit Community Cloud](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app). In Advanced settings, add `STAYWISE_DEMO = "1"` to the Secrets TOML so it starts with fictional demo records in read-only mode. Add the resulting app URL above and to the team-project submission README details before submission. Do not deploy personal guest records.
 
 ## Project structure
 

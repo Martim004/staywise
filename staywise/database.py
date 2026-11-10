@@ -10,7 +10,15 @@ from typing import Any
 
 
 def is_demo_mode() -> bool:
-    return os.getenv("STAYWISE_DEMO", "").strip().lower() in {"1", "true", "yes"}
+    configured = os.getenv("STAYWISE_DEMO", "").strip().lower()
+    if configured in {"1", "true", "yes"}:
+        return True
+    try:
+        import streamlit as st
+        configured = str(st.secrets.get("STAYWISE_DEMO", "")).strip().lower()
+    except Exception:
+        configured = ""
+    return configured in {"1", "true", "yes"}
 
 
 def database_path() -> Path:
