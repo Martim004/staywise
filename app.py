@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import calendar
+import math
 from datetime import date, timedelta
 from html import escape
 
 import pandas as pd
+import pydeck as pdk
 import streamlit as st
 
 from staywise.calculations import competitor_summary, date_ranges_overlap, validate_reservation
@@ -317,15 +319,39 @@ elif page == "Market":
                     m5.metric("Suggested nightly rate", money(suggested), help="Filtered Airbnb median adjusted by your chosen percentage")
                     st.caption("Rate guide: the nearby median is a simple benchmark. It does not account for date-specific demand, quality, fees, or Booking.com inventory.")
                     st.subheader("Nearby competition map")
-                    st.markdown("<span style='color:#1D7A78'>● Your property</span>　<span style='color:#D8903F'>● Airbnb comparison</span>　<span style='color:#526676'>● Manually added listing</span>", unsafe_allow_html=True)
-                    map_rows = [{"latitude":float(settings["latitude"]),"longitude":float(settings["longitude"]),"color":"#1D7A78","size":260}]
-                    for _, listing in nearby.iterrows():
-                        map_rows.append({"latitude":float(listing["latitude"]),"longitude":float(listing["longitude"]),"color":"#D8903F","size":75})
-                    for comp in comps:
-                        if comp.get("latitude") is None or comp.get("longitude") is None or float(comp.get("distance_km", 0)) > radius_km:
-                            continue
-                        map_rows.append({"latitude":float(comp["latitude"]),"longitude":float(comp["longitude"]),"color":"#526676","size":110})
-                    st.map(pd.DataFrame(map_rows), latitude="latitude", longitude="longitude", color="color", size="size", height=420)
+                    map_view = st.radio("Map view", ["Density", "Individual listings"], horizontal=True,
+                                         captions=["See where listings cluster", "Show each listing as a pin"], key="competition_map_view")
+                    st.caption(f"Showing {len(nearby):,} matching Airbnb listings within {radius_km:.1f} km. The teal ring marks your search radius; zoom and drag to explore.")
+                    home = {"latitude":float(settings["latitude"]),"longitude":float(settings["longitude"]),"label":settings["property_name"]}
+                    map_layers = []
+                    if map_view == "Density":
+                        map_layers.append(pdk.Layer("HexagonLayer", data=nearby, get_position="[longitude, latitude]",
+                            radius=180, coverage=0.82, elevation_scale=0, extruded=False, pickable=False,
+                            color_range=[[255,239,214],[249,204,143],[239,163,82],[213,116,47],[165,75,36]]))
+                    else:
+                        map_layers.append(pdk.Layer("ScatterplotLayer", data=nearby, get_position="[longitude, latitude]",
+                            get_radius=55, radius_min_pixels=4, radius_max_pixels=9, get_fill_color=[226,142,60,200],
+                            get_line_color=[255,255,255,220], line_width_min_pixels=1, stroked=True, pickable=False))
+                    manual_points = [c for c in comps if c.get("latitude") is not None and c.get("longitude") is not None
+                                     and float(c.get("distance_km",0)) <= radius_km]
+                    if manual_points:
+                        map_layers.append(pdk.Layer("ScatterplotLayer", data=manual_points, get_position="[longitude, latitude]",
+                            get_radius=70, radius_min_pixels=5, radius_max_pixels=10, get_fill_color=[82,102,118,220],
+                            get_line_color=[255,255,255,230], line_width_min_pixels=1, stroked=True, pickable=False))
+                    map_layers.append(pdk.Layer("CircleLayer", data=[home], get_position="[longitude, latitude]",
+                        get_radius=radius_km * 1000, radius_units="meters", filled=False, stroked=True, line_width_min_pixels=2,
+                        get_line_color=[29,122,120,180], pickable=False))
+                    map_layers.append(pdk.Layer("ScatterplotLayer", data=[home], get_position="[longitude, latitude]",
+                        get_radius=105, radius_min_pixels=9, radius_max_pixels=13, get_fill_color=[29,122,120,255],
+                        get_line_color=[255,255,255,255], line_width_min_pixels=2, stroked=True, pickable=False))
+                    map_layers.append(pdk.Layer("TextLayer", data=[home], get_position="[longitude, latitude]", get_text="label",
+                        get_size=14, get_color=[23,50,77,255], get_pixel_offset=[0,-20], get_alignment_baseline="bottom", pickable=False))
+                    zoom = max(11.0, min(16.5, 15.0 - math.log2(max(radius_km,0.2) / 2)))
+                    deck = pdk.Deck(layers=map_layers,
+                        initial_view_state=pdk.ViewState(latitude=float(settings["latitude"]), longitude=float(settings["longitude"]), zoom=zoom, pitch=0, bearing=0),
+                        tooltip=None)
+                    st.pydeck_chart(deck, height=520, use_container_width=True)
+                    st.markdown("<span style='color:#1D7A78'>● Your property</span>　<span style='color:#D8903F'>● Airbnb listing density / pins</span>　<span style='color:#526676'>● Manually added listing</span>", unsafe_allow_html=True)
                     price_frame = nearby["price"].dropna().clip(upper=nearby["price"].quantile(.95))
                     st.bar_chart(price_frame.value_counts(bins=12, sort=False).sort_index(), height=190, color="#1D7A78")
                     visible = [c for c in ["name","neighbourhood_cleansed","room_type","bedrooms","accommodates","price","review_scores_rating","number_of_reviews","availability_365","distance_km","listing_url"] if c in nearby]
