@@ -1,6 +1,6 @@
 # StayWise
 
-StayWise helps a short-term rental owner keep reservation details, compare similar homes, estimate annual revenue, and export a clean PDF or Excel report.
+StayWise helps a short-term rental owner manage stays and blocked dates, compare nearby Lisbon Airbnb listings, and export booking information as CSV.
 
 > **Course-project note:** the linked team-project guidance asks teams to extend a member's solo project. StayWise is intentionally standalone while an exception is requested. Confirm the exception before presenting this repository as a course-compliant submission.
 
@@ -8,9 +8,9 @@ StayWise helps a short-term rental owner keep reservation details, compare simil
 
 - Public demo: https://staywise-martim004.streamlit.app
 - Team members and student numbers: **Add all names and student numbers before course submission.**
-- Repository: `https://github.com/Martim004/staywise`
+- Repository: https://github.com/Martim004/staywise
 
-The public demo is read-only and uses fictional data only. Never commit guest details or a local database file.
+The public demo is read-only and uses fictional records only. Never commit guest details or a local database file.
 
 ## Run locally
 
@@ -18,12 +18,12 @@ Requires Python 3.10 or newer.
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
 python -m pip install -r requirements.txt
 streamlit run app.py
 ```
 
-The local app stores data in `data/staywise.sqlite3`. That directory is excluded from Git. To inspect the read-only fictional sample dataset locally, set `STAYWISE_DEMO=1` before starting the app.
+The local app stores data in `data/staywise.sqlite3`. That directory is excluded from Git. To inspect fictional sample records locally, set `STAYWISE_DEMO=1` before starting the app.
 
 ## Run tests
 
@@ -33,15 +33,17 @@ python -m unittest discover -s tests
 
 ## Main features
 
-- Reservation records with guest contact details, stay dates, guest count, rate, source, notes, and status.
-- CSV import with row-level validation and overlap checks; CSV export and a downloadable template.
-- Owner-blocked dates for personal use or maintenance.
-- User-entered comparable listings, median nightly-rate benchmark, and adjustable suggested rate.
-- Year forecast combining confirmed stays with monthly occupancy and rate assumptions for available, unbooked nights.
-- Estimated net after configured platform fees and operating costs. Taxes are excluded.
-- Downloadable annual PDF report and editable Excel workbook.
+- Reservation records with guest details, stay dates, source, and status; CSV import and export.
+- Color-coded month calendar showing booked, blocked, and available nights.
+- Lisbon Airbnb market comparisons from the public Inside Airbnb listings snapshot, with a configurable radius, bedroom and capacity filters, price distribution, ratings, reviews, availability, and listing-level details.
+- Manual comparable records for Booking.com or other sources, since Inside Airbnb publishes Airbnb data only.
+- Property location settings using latitude and longitude. The initial Campo de Ourique coordinates are approximate and should be adjusted for the property.
 
-## CSV columns
+The Inside Airbnb public snapshot is downloaded on request and cached for 24 hours. Prices are observations from that snapshot, not live booking quotes. Comparisons use straight-line distance and should be interpreted as market context, not an exact price prediction. Source: [Inside Airbnb data](https://insideairbnb.com/pt/get-the-data/).
+
+Revenue forecasting, expected-revenue summaries, and PDF/Excel annual reports are temporarily removed.
+
+## Booking CSV columns
 
 `guest_name,email,phone,checkin,checkout,guests,nightly_rate,status,source,notes`
 
@@ -49,15 +51,15 @@ Dates use `YYYY-MM-DD`. Status must be `confirmed`, `completed`, or `cancelled`.
 
 ## Public demo deployment
 
-The demo can be deployed from this public GitHub repository on [Streamlit Community Cloud](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app). In Advanced settings, add `STAYWISE_DEMO = "1"` to the Secrets TOML so it starts with fictional demo records in read-only mode. Add the resulting app URL above and to the team-project submission README details before submission. Do not deploy personal guest records.
+The demo is deployed from this public GitHub repository on [Streamlit Community Cloud](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app). In Advanced settings, `STAYWISE_DEMO = "1"` is configured in Secrets TOML. Never deploy personal guest records.
 
 ## Project structure
 
 ```text
-app.py                 Streamlit screens and user workflows
-staywise/calculations.py  Reservation rules, market summary, revenue forecast
+app.py                   Streamlit screens and user workflows
+staywise/calculations.py Reservation validation and manual market summary
 staywise/database.py     SQLite storage and fictional demo seed data
 staywise/imports.py      CSV template, validation, and export
-staywise/reports.py      PDF and Excel report generation
-tests/                  Business-rule and export verification
+staywise/inside_airbnb.py Inside Airbnb filtering and distance calculations
+tests/                   Business-rule, export, and app smoke checks
 ```
