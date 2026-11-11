@@ -37,7 +37,7 @@ python -m unittest discover -s tests
 - A multi-property portfolio with property-specific reservations, blocked dates, comparables, map coordinates, and Airbnb / Booking.com listing links.
 - Color-coded month calendar showing booked, blocked, and available nights.
 - Lisbon Airbnb market comparisons from the public Inside Airbnb listings snapshot, with a configurable radius, bedroom and capacity filters, price distribution, ratings, reviews, availability, and listing-level details.
-- A map centered on the selected home, with a search-radius ring, an aggregated listing-density view, and individual listing pins as an alternate view.
+- A clustered map centered on the selected home, with hover names and listing popups that link to Airbnb pages.
 - Manual comparable records for Booking.com or other sources, since Inside Airbnb publishes Airbnb data only.
 - Revenue views for a chosen night, a chosen month, and current-year-to-date. Revenue is actual booked gross nightly revenue, not a projection.
 
