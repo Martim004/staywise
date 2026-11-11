@@ -8,11 +8,11 @@ import pandas as pd
 import streamlit as st
 
 from staywise.calculations import competitor_summary, date_ranges_overlap, validate_reservation
-from staywise.database import (add_blocked_dates, add_comparable, add_reservation,
+from staywise.database import (add_blocked_dates, add_comparable, add_property, add_reservation,
                                delete_blocked_dates, delete_comparable, delete_reservation,
                                get_blocked_dates, get_comparables,
-                               get_reservations, get_settings, init_db, is_demo_mode,
-                               save_settings, seed_demo_data,
+                               get_properties, get_reservations, get_settings, init_db, is_demo_mode,
+                               seed_demo_data, update_property,
                                set_comparable_selected)
 from staywise.imports import export_csv, parse_booking_csv, template_csv
 from staywise.inside_airbnb import LISBON_LISTINGS_URL, SOURCE_PAGE, listings_within_radius
@@ -40,28 +40,54 @@ if is_demo_mode():
 READ_ONLY = is_demo_mode()
 
 settings = get_settings()
-reservations = get_reservations()
-blocks = get_blocked_dates()
-comps = get_comparables()
+properties = get_properties()
 
 
 def money(value: float) -> str:
     return f"€{value:,.2f}"
 
 
+def booked_revenue_by_day(items: list[dict], start: date, end_exclusive: date) -> dict[date, float]:
+    """Gross night revenue from active reservations, clipped to a date range."""
+    totals: dict[date, float] = {}
+    for item in items:
+        if item["status"] not in {"confirmed", "completed"}:
+            continue
+        checkin, checkout = date.fromisoformat(item["checkin"]), date.fromisoformat(item["checkout"])
+        night = max(checkin, start)
+        while night < min(checkout, end_exclusive):
+            totals[night] = totals.get(night, 0.0) + float(item["nightly_rate"])
+            night += timedelta(days=1)
+    return totals
+
+
 with st.sidebar:
     st.markdown('<div class="brand">StayWise<span style="color:#1D7A78">.</span></div>', unsafe_allow_html=True)
     st.caption("Short-stay rental studio")
     st.divider()
-    page = st.radio("Workspace", ["Overview", "Bookings", "Calendar", "Market"], label_visibility="collapsed")
+    page = st.radio("Workspace", ["Overview", "Bookings", "Calendar", "Market", "Revenue"], label_visibility="collapsed")
+    property_ids = [p["id"] for p in properties]
+    if st.session_state.get("selected_property_id") not in property_ids:
+        st.session_state["selected_property_id"] = property_ids[0]
+    active_property_id = st.selectbox("Rental property", property_ids,
+                                      format_func=lambda pid: next(p["name"] for p in properties if p["id"] == pid),
+                                      key="selected_property_id")
     st.divider()
-    st.markdown(f"**{settings.get('property_name','My Rental')}**")
-    st.caption(settings.get("property_area") or "Add a location in Market settings")
+    active_property = next(p for p in properties if p["id"] == active_property_id)
+    st.markdown(f"**{active_property['name']}**")
+    st.caption(active_property.get("area") or "Add a location in property settings")
     if is_demo_mode():
         st.info("Public demo · fictional records only · read-only", icon="🧪")
     else:
         st.caption("Private local database")
     st.caption("EUR · English")
+
+settings = {**settings, "property_name": active_property["name"], "property_area": active_property["area"],
+            "bedrooms": str(active_property["bedrooms"]), "capacity": str(active_property["capacity"]),
+            "latitude": str(active_property["latitude"]), "longitude": str(active_property["longitude"])}
+reservations = get_reservations(active_property_id)
+blocks = get_blocked_dates(active_property_id)
+comps = get_comparables(active_property_id)
 
 if READ_ONLY:
     st.warning("This public demo is read-only and contains fictional records. Run StayWise locally to add or import real guest details.", icon="🔒")
@@ -76,6 +102,34 @@ if page == "Overview":
     cols[0].metric("Blocked date ranges", len(blocks))
     cols[1].metric("Manual comparable median", money(market["median_rate"]) if market["median_rate"] is not None else "—")
     st.info("Use the Calendar to see availability by day, or Market to compare nearby Lisbon Airbnb listings by radius.")
+    with st.expander("Add another rental property"):
+        st.caption("Save each home separately, then switch between them from the property selector. Airbnb and Booking.com links open your listing; StayWise does not sync accounts directly.")
+        with st.form("add_property", clear_on_submit=True):
+            p1,p2,p3 = st.columns(3)
+            new_name = p1.text_input("Property name *")
+            new_area = p2.text_input("Area / neighborhood")
+            new_bedrooms = p3.number_input("Bedrooms", min_value=0, max_value=30, value=2, key="new_property_bedrooms")
+            p1,p2,p3 = st.columns(3)
+            new_capacity = p1.number_input("Guest capacity", min_value=1, max_value=100, value=4, key="new_property_capacity")
+            new_lat = p2.number_input("Latitude", min_value=-90.0, max_value=90.0, value=38.719, format="%.6f", key="new_property_lat")
+            new_lon = p3.number_input("Longitude", min_value=-180.0, max_value=180.0, value=-9.165, format="%.6f", key="new_property_lon")
+            p1,p2 = st.columns(2)
+            new_airbnb = p1.text_input("Airbnb listing URL")
+            new_booking = p2.text_input("Booking.com listing URL")
+            if st.form_submit_button("Add property", type="primary", disabled=READ_ONLY):
+                if not new_name.strip():
+                    st.error("Enter a name for this property.")
+                else:
+                    new_id = add_property({"name":new_name.strip(),"area":new_area.strip(),"bedrooms":int(new_bedrooms),
+                        "capacity":int(new_capacity),"latitude":float(new_lat),"longitude":float(new_lon),
+                        "airbnb_url":new_airbnb.strip(),"booking_url":new_booking.strip()})
+                    st.session_state["selected_property_id"] = new_id
+                    st.rerun()
+    link_cols = st.columns(2)
+    if active_property.get("airbnb_url"):
+        link_cols[0].link_button("Open Airbnb listing", active_property["airbnb_url"])
+    if active_property.get("booking_url"):
+        link_cols[1].link_button("Open Booking.com listing", active_property["booking_url"])
 
 
 elif page == "Bookings":
@@ -106,7 +160,7 @@ elif page == "Bookings":
             if errors:
                 for error in errors: st.error(error)
             else:
-                add_reservation(item)
+                add_reservation({**item, "property_id":active_property_id})
                 st.success("Booking saved.")
                 st.rerun()
     with tab_import:
@@ -123,7 +177,7 @@ elif page == "Bookings":
             if accepted:
                 st.dataframe(pd.DataFrame(accepted), width="stretch", hide_index=True)
                 if st.button(f"Import {len(accepted)} valid booking(s)", type="primary", disabled=READ_ONLY):
-                    for item in accepted: add_reservation(item)
+                    for item in accepted: add_reservation({**item, "property_id":active_property_id})
                     st.success(f"Imported {len(accepted)} booking(s).")
                     st.rerun()
             if errors:
@@ -145,7 +199,7 @@ elif page == "Bookings":
             elif any(date_ranges_overlap(block_start, block_end, date.fromisoformat(b["start_date"]), date.fromisoformat(b["end_date"])) for b in blocks):
                 st.error("These dates overlap an existing blocked period.")
             else:
-                add_blocked_dates(block_start.isoformat(),block_end.isoformat(),reason)
+                add_blocked_dates(block_start.isoformat(),block_end.isoformat(),reason,active_property_id)
                 st.success("Dates blocked.")
                 st.rerun()
         if blocks:
@@ -214,17 +268,20 @@ elif page == "Market":
     with st.expander("Property and search location", expanded=not settings.get("property_area")):
         with st.form("property_settings"):
             c1,c2,c3 = st.columns(3)
-            property_name = c1.text_input("Property name", settings.get("property_name","My Rental"))
+            property_name = c1.text_input("Property name", active_property["name"])
             area = c2.text_input("Area / neighborhood", settings.get("property_area",""))
             bedrooms = c3.number_input("Bedrooms", min_value=0, max_value=30, value=int(settings.get("bedrooms",2)))
             c1,c2,c3 = st.columns(3)
             capacity = c1.number_input("Guest capacity", min_value=1, max_value=100, value=int(settings.get("capacity",4)))
             latitude = c2.number_input("Latitude", min_value=-90.0, max_value=90.0, value=float(settings.get("latitude",38.719)), format="%.6f")
             longitude = c3.number_input("Longitude", min_value=-180.0, max_value=180.0, value=float(settings.get("longitude",-9.165)), format="%.6f")
+            c1,c2 = st.columns(2)
+            airbnb_url = c1.text_input("Airbnb listing URL", active_property.get("airbnb_url", ""))
+            booking_url = c2.text_input("Booking.com listing URL", active_property.get("booking_url", ""))
             st.caption("The default map point is approximate for Campo de Ourique. Set your home's coordinates for the most accurate radius search.")
             if st.form_submit_button("Save property settings", type="primary", disabled=READ_ONLY):
-                save_settings({"property_name":property_name,"property_area":area,"bedrooms":bedrooms,"capacity":capacity,
-                               "latitude":latitude,"longitude":longitude})
+                update_property(active_property_id, {"name":property_name,"area":area,"bedrooms":int(bedrooms),"capacity":int(capacity),
+                               "latitude":float(latitude),"longitude":float(longitude),"airbnb_url":airbnb_url,"booking_url":booking_url})
                 st.success("Property settings saved."); st.rerun()
 
     st.subheader("Nearby Airbnb market · Inside Airbnb")
@@ -259,6 +316,16 @@ elif page == "Market":
                     suggested = float(nearby["price"].median()) * (1 + airbnb_adjustment / 100)
                     m5.metric("Suggested nightly rate", money(suggested), help="Filtered Airbnb median adjusted by your chosen percentage")
                     st.caption("Rate guide: the nearby median is a simple benchmark. It does not account for date-specific demand, quality, fees, or Booking.com inventory.")
+                    st.subheader("Nearby competition map")
+                    st.markdown("<span style='color:#1D7A78'>● Your property</span>　<span style='color:#D8903F'>● Airbnb comparison</span>　<span style='color:#526676'>● Manually added listing</span>", unsafe_allow_html=True)
+                    map_rows = [{"latitude":float(settings["latitude"]),"longitude":float(settings["longitude"]),"color":"#1D7A78","size":260}]
+                    for _, listing in nearby.iterrows():
+                        map_rows.append({"latitude":float(listing["latitude"]),"longitude":float(listing["longitude"]),"color":"#D8903F","size":75})
+                    for comp in comps:
+                        if comp.get("latitude") is None or comp.get("longitude") is None or float(comp.get("distance_km", 0)) > radius_km:
+                            continue
+                        map_rows.append({"latitude":float(comp["latitude"]),"longitude":float(comp["longitude"]),"color":"#526676","size":110})
+                    st.map(pd.DataFrame(map_rows), latitude="latitude", longitude="longitude", color="color", size="size", height=420, alt="Map of the property and nearby rental comparisons")
                     price_frame = nearby["price"].dropna().clip(upper=nearby["price"].quantile(.95))
                     st.bar_chart(price_frame.value_counts(bins=12, sort=False).sort_index(), height=190, color="#1D7A78")
                     visible = [c for c in ["name","neighbourhood_cleansed","room_type","bedrooms","accommodates","price","review_scores_rating","number_of_reviews","availability_365","distance_km","listing_url"] if c in nearby]
@@ -283,6 +350,10 @@ elif page == "Market":
         comp_capacity = c2.number_input("Capacity", min_value=1, max_value=100, value=max(1,int(settings.get("capacity",4))))
         distance = c3.number_input("Distance from your home (km)", min_value=0.0, value=0.5, step=0.1)
         comp_rate = c4.number_input("Observed nightly rate (€)", min_value=0.0, value=140.0, step=5.0)
+        comp_map = st.checkbox("Add this comparable to the map", value=False)
+        c1,c2 = st.columns(2)
+        comp_lat = c1.number_input("Comparable latitude", min_value=-90.0, max_value=90.0, value=float(settings.get("latitude",38.719)), format="%.6f", disabled=not comp_map)
+        comp_lon = c2.number_input("Comparable longitude", min_value=-180.0, max_value=180.0, value=float(settings.get("longitude",-9.165)), format="%.6f", disabled=not comp_map)
         url = st.text_input("Listing URL (optional)")
         comp_notes = st.text_input("Notes: amenities, size, or other differences")
         comp_submit = st.form_submit_button("Add comparison", type="primary", disabled=READ_ONLY)
@@ -292,7 +363,9 @@ elif page == "Market":
         else:
             add_comparable({"name":comp_name.strip(),"area":comp_area.strip(),"bedrooms":int(comp_beds),"capacity":int(comp_capacity),
                             "distance_km":float(distance),"nightly_rate":float(comp_rate),"observed_date":observed.isoformat(),
-                            "url":url.strip(),"notes":comp_notes,"selected":1})
+                            "url":url.strip(),"notes":comp_notes,"selected":1,
+                            "latitude":float(comp_lat) if comp_map else None,"longitude":float(comp_lon) if comp_map else None,
+                            "property_id":active_property_id})
             st.success("Comparable saved."); st.rerun()
     st.subheader("Selected price benchmark")
     adjust = st.slider("Suggested rate adjustment", min_value=-30, max_value=30, value=0, step=1, format="%d%%")
@@ -312,3 +385,43 @@ elif page == "Market":
             if c.get("notes"): st.caption(c["notes"])
     else:
         st.info("Add a few nearby homes with similar bedrooms and capacity to create a useful benchmark.")
+
+
+elif page == "Revenue":
+    st.markdown('<div class="eyebrow">Recorded stay income</div>', unsafe_allow_html=True)
+    st.title("Revenue")
+    st.markdown('<p class="subtle">Gross nightly revenue from confirmed or completed stays for the selected property. Cancelled stays and future nights are excluded from year-to-date totals.</p>', unsafe_allow_html=True)
+    revenue_tabs = st.tabs(["Daily", "Monthly", "Year to date"])
+    with revenue_tabs[0]:
+        revenue_day = st.date_input("Revenue date", value=date.today(), key="revenue_day")
+        daily = booked_revenue_by_day(reservations, revenue_day, revenue_day + timedelta(days=1))
+        gross = daily.get(revenue_day, 0.0)
+        day_bookings = [r for r in reservations if r["status"] in {"confirmed","completed"} and
+                        date.fromisoformat(r["checkin"]) <= revenue_day < date.fromisoformat(r["checkout"])]
+        c1,c2 = st.columns(2)
+        c1.metric("Recorded gross revenue", money(gross))
+        c2.metric("Booked nights", len(day_bookings))
+        if day_bookings:
+            st.dataframe(pd.DataFrame([{"Guest":r["guest_name"],"Source":r["source"],"Nightly revenue":float(r["nightly_rate"])} for r in day_bookings]), width="stretch", hide_index=True)
+        else:
+            st.info("No active stay is recorded for this date.")
+    with revenue_tabs[1]:
+        revenue_month = st.date_input("Choose a month", value=date.today().replace(day=1), key="revenue_month")
+        month_start = revenue_month.replace(day=1)
+        next_month = date(month_start.year + (month_start.month == 12), month_start.month % 12 + 1, 1)
+        monthly = booked_revenue_by_day(reservations, month_start, next_month)
+        c1,c2 = st.columns(2)
+        c1.metric("Monthly gross revenue", money(sum(monthly.values())))
+        c2.metric("Booked nights", len(monthly))
+        daily_frame = pd.DataFrame([{"Date":day,"Gross revenue (€)":monthly.get(day,0.0)} for day in (month_start + timedelta(days=i) for i in range((next_month-month_start).days))]).set_index("Date")
+        st.bar_chart(daily_frame, height=280, color="#1D7A78")
+    with revenue_tabs[2]:
+        today = date.today()
+        ytd = booked_revenue_by_day(reservations, date(today.year,1,1), today + timedelta(days=1))
+        c1,c2,c3 = st.columns(3)
+        c1.metric(f"{today.year} gross to date", money(sum(ytd.values())))
+        c2.metric("Nights stayed / in progress", len(ytd))
+        c3.metric("Daily average to date", money(sum(ytd.values()) / max(1, (today - date(today.year,1,1)).days + 1)))
+        monthly_ytd = pd.DataFrame([{"Month":calendar.month_abbr[m],"Gross revenue (€)":sum(value for day,value in ytd.items() if day.month == m)} for m in range(1,today.month+1)]).set_index("Month")
+        st.bar_chart(monthly_ytd, height=280, color="#1D7A78")
+        st.caption("This is booked gross revenue from nightly rates. It does not estimate unbooked dates or subtract fees, costs, or taxes.")
