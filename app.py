@@ -325,7 +325,7 @@ elif page == "Market":
                         if comp.get("latitude") is None or comp.get("longitude") is None or float(comp.get("distance_km", 0)) > radius_km:
                             continue
                         map_rows.append({"latitude":float(comp["latitude"]),"longitude":float(comp["longitude"]),"color":"#526676","size":110})
-                    st.map(pd.DataFrame(map_rows), latitude="latitude", longitude="longitude", color="color", size="size", height=420, alt="Map of the property and nearby rental comparisons")
+                    st.map(pd.DataFrame(map_rows), latitude="latitude", longitude="longitude", color="color", size="size", height=420)
                     price_frame = nearby["price"].dropna().clip(upper=nearby["price"].quantile(.95))
                     st.bar_chart(price_frame.value_counts(bins=12, sort=False).sort_index(), height=190, color="#1D7A78")
                     visible = [c for c in ["name","neighbourhood_cleansed","room_type","bedrooms","accommodates","price","review_scores_rating","number_of_reviews","availability_365","distance_km","listing_url"] if c in nearby]
