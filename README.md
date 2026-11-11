@@ -1,6 +1,6 @@
 # StayWise
 
-StayWise helps a short-term rental owner manage stays and blocked dates, compare nearby Lisbon Airbnb listings, and export booking information as CSV.
+StayWise helps a short-term rental owner manage multiple homes and their stays, compare nearby Lisbon Airbnb listings, view competitors on a map, and track recorded nightly revenue.
 
 > **Course-project note:** the linked team-project guidance asks teams to extend a member's solo project. StayWise is intentionally standalone while an exception is requested. Confirm the exception before presenting this repository as a course-compliant submission.
 
@@ -10,7 +10,7 @@ StayWise helps a short-term rental owner manage stays and blocked dates, compare
 - Team members and student numbers: **Add all names and student numbers before course submission.**
 - Repository: https://github.com/Martim004/staywise
 
-The public demo is read-only and uses fictional records only. Never commit guest details or a local database file.
+The public demo is read-only and uses fictional records only, including a Campo de Ourique T2 sample with roughly 60% annual booked-night occupancy. Never commit guest details or a local database file.
 
 ## Run locally
 
@@ -34,12 +34,14 @@ python -m unittest discover -s tests
 ## Main features
 
 - Reservation records with guest details, stay dates, source, and status; CSV import and export.
+- A multi-property portfolio with property-specific reservations, blocked dates, comparables, map coordinates, and Airbnb / Booking.com listing links.
 - Color-coded month calendar showing booked, blocked, and available nights.
 - Lisbon Airbnb market comparisons from the public Inside Airbnb listings snapshot, with a configurable radius, bedroom and capacity filters, price distribution, ratings, reviews, availability, and listing-level details.
+- A map showing the selected home and nearby Airbnb and manually added comparisons.
 - Manual comparable records for Booking.com or other sources, since Inside Airbnb publishes Airbnb data only.
-- Property location settings using latitude and longitude. The initial Campo de Ourique coordinates are approximate and should be adjusted for the property.
+- Revenue views for a chosen night, a chosen month, and current-year-to-date. Revenue is actual booked gross nightly revenue, not a projection.
 
-The Inside Airbnb public snapshot is downloaded on request and cached for 24 hours. Prices are observations from that snapshot, not live booking quotes. Comparisons use straight-line distance and should be interpreted as market context, not an exact price prediction. Source: [Inside Airbnb data](https://insideairbnb.com/pt/get-the-data/).
+The Inside Airbnb public snapshot is downloaded on request and cached for 24 hours. Prices are observations from that snapshot, not live booking quotes. Comparisons use straight-line distance and should be interpreted as market context, not an exact price prediction. Airbnb and Booking.com links open the owner's listing page; StayWise does not currently connect accounts or sync reservations directly. Airbnb API-connected software access and Booking.com connectivity require approved partner / property connections. Source: [Inside Airbnb data](https://insideairbnb.com/pt/get-the-data/).
 
 Revenue forecasting, expected-revenue summaries, and PDF/Excel annual reports are temporarily removed.
 
