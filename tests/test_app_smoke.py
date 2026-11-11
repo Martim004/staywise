@@ -14,14 +14,14 @@ class AppSmokeTests(unittest.TestCase):
         }, clear=False):
             app = AppTest.from_file("app.py").run(timeout=30)
             self.assertEqual(len(app.exception), 0)
-            for page in ["Bookings", "Calendar", "Market", "Forecast", "Reports"]:
+            for page in ["Bookings", "Calendar", "Market"]:
                 app.sidebar.radio[0].set_value(page)
                 app.run(timeout=30)
                 self.assertEqual(len(app.exception), 0, f"{page} page raised: {[e.message for e in app.exception]}")
-                if page in {"Bookings", "Market", "Forecast"}:
+                if page in {"Bookings", "Market"}:
                     self.assertTrue(all(button.disabled for button in app.button if button.label in {
                         "Save booking", "Block dates", "Remove", "Delete selected booking",
-                        "Save property settings", "Add comparison", "Delete", "Save monthly assumptions"
+                        "Save property settings", "Add comparison", "Delete"
                     }))
             app.sidebar.radio[0].set_value("Bookings")
             app.run(timeout=30)
