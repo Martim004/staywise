@@ -128,7 +128,7 @@ def delete_comparable(comparable_id: int) -> None:
 
 DEFAULTS = {
     "property_name": "My Rental", "property_area": "", "bedrooms": "2", "capacity": "4",
-    "platform_fee_percent": "14", "monthly_operating_cost": "250",
+    "latitude": "38.719", "longitude": "-9.165",
 }
 
 
