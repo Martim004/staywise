@@ -48,6 +48,11 @@ settings = get_settings()
 properties = get_properties()
 if "pending_property_id" in st.session_state:
     st.session_state["selected_property_id"] = st.session_state.pop("pending_property_id")
+if is_demo_mode() and not st.session_state.get("demo_sample_defaulted"):
+    demo_home = next((p for p in properties if p["name"] == "Campo de Ourique T2 · fictional example"), None)
+    if demo_home:
+        st.session_state["selected_property_id"] = demo_home["id"]
+        st.session_state["demo_sample_defaulted"] = True
 
 if is_demo_mode() and not properties:
     st.markdown('<div class="brand">StayWise<span style="color:#1D7A78">.</span></div>', unsafe_allow_html=True)
@@ -102,7 +107,8 @@ with st.sidebar:
     page = st.radio("Workspace", ["Overview", "Bookings", "Calendar", "Market", "Revenue"], label_visibility="collapsed")
     property_ids = [p["id"] for p in properties]
     if st.session_state.get("selected_property_id") not in property_ids:
-        st.session_state["selected_property_id"] = property_ids[0]
+        demo_home = next((p for p in properties if p["name"] == "Campo de Ourique T2 · fictional example"), None)
+        st.session_state["selected_property_id"] = demo_home["id"] if demo_home else property_ids[0]
     active_property_id = st.selectbox("Rental property", property_ids,
                                       format_func=lambda pid: next(p["name"] for p in properties if p["id"] == pid),
                                       key="selected_property_id")
