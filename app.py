@@ -46,6 +46,8 @@ READ_ONLY = is_demo_mode()
 
 settings = get_settings()
 properties = get_properties()
+if "pending_property_id" in st.session_state:
+    st.session_state["selected_property_id"] = st.session_state.pop("pending_property_id")
 
 if is_demo_mode() and not properties:
     st.markdown('<div class="brand">StayWise<span style="color:#1D7A78">.</span></div>', unsafe_allow_html=True)
@@ -71,7 +73,7 @@ if is_demo_mode() and not properties:
                 new_id = add_property({"name":new_name.strip(),"area":new_area.strip(),"bedrooms":int(new_bedrooms),
                     "capacity":int(new_capacity),"latitude":float(new_lat),"longitude":float(new_lon),
                     "airbnb_url":new_airbnb.strip(),"booking_url":new_booking.strip()})
-                st.session_state["selected_property_id"] = new_id
+                st.session_state["pending_property_id"] = new_id
                 st.rerun()
     st.stop()
 
@@ -155,7 +157,7 @@ if page == "Overview":
                     new_id = add_property({"name":new_name.strip(),"area":new_area.strip(),"bedrooms":int(new_bedrooms),
                         "capacity":int(new_capacity),"latitude":float(new_lat),"longitude":float(new_lon),
                         "airbnb_url":new_airbnb.strip(),"booking_url":new_booking.strip()})
-                    st.session_state["selected_property_id"] = new_id
+                    st.session_state["pending_property_id"] = new_id
                     st.rerun()
     link_cols = st.columns(2)
     if active_property.get("airbnb_url"):
