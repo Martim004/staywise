@@ -10,7 +10,7 @@ StayWise helps a short-term rental owner manage multiple homes and their stays, 
 - Team members and student numbers: **Add all names and student numbers before course submission.**
 - Repository: https://github.com/Martim004/staywise
 
-The public walkthrough includes a protected Campo de Ourique T2 example with fictional guest and booking records at roughly 60% occupancy. Its data is isolated to each browser session. Visitors can add and remove extra properties; the built-in example stays available, and guest records cannot be edited. Never commit real guest details or a local database file.
+The public walkthrough includes a protected **Casa T2 do Campo de Ourique** example with fictional guest bookings at roughly 60% occupancy, a blocked owner stay, and three fictional comparables. Its data is isolated to each browser session. Visitors can add and remove extra properties; the built-in example stays available, and guest records cannot be edited. Never commit real guest details or a local database file.
 
 ## Run locally
 
@@ -42,7 +42,7 @@ python -m unittest discover -s tests
 - Manual comparable records for Booking.com or other sources, since Inside Airbnb publishes Airbnb data only.
 - Revenue views for a chosen night, a chosen month, and current-year-to-date. Revenue is actual booked gross nightly revenue, not a projection.
 - Revenue Excel workbook with a KPI dashboard and chart, monthly summary, daily ledger, and reservation detail.
-- Fictional Campo de Ourique sample home and bookings for hands-on demos, isolated by visitor session.
+- Fictional Campo de Ourique sample home, bookings, blocked dates, and comparisons for hands-on demos, isolated by visitor session.
 
 The Inside Airbnb public snapshot is downloaded on request and cached for 24 hours. Prices are observations from that snapshot, not live booking quotes. Comparisons use straight-line distance and should be interpreted as market context, not an exact price prediction. Airbnb and Booking.com links open the owner's listing page; StayWise does not currently connect accounts or sync reservations directly. Airbnb API-connected software access and Booking.com connectivity require approved partner / property connections. Source: [Inside Airbnb data](https://insideairbnb.com/pt/get-the-data/).
 
