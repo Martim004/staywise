@@ -16,7 +16,7 @@ from staywise.database import (add_blocked_dates, add_comparable, add_property, 
                                delete_blocked_dates, delete_comparable, delete_property, delete_reservation,
                                get_blocked_dates, get_comparables,
                                get_properties, get_reservations, get_settings, init_db, is_demo_mode,
-                               is_demo_sample_property, seed_demo_data, update_property,
+                               seed_demo_data, update_property,
                                set_comparable_selected)
 from staywise.imports import export_csv, parse_booking_csv, template_csv
 from staywise.inside_airbnb import LISBON_LISTINGS_URL, SOURCE_PAGE, listings_within_radius
@@ -161,7 +161,7 @@ if page == "Overview":
                     st.rerun()
         st.divider()
         st.subheader("Remove this rental")
-        if is_demo_sample_property(active_property_id):
+        if READ_ONLY and active_property["name"] == "Campo de Ourique T2 · fictional example":
             st.info("This built-in fictional Campo de Ourique example is kept in every demo session.")
         else:
             st.warning("Removing this property permanently deletes its reservations and guest contact details, blocked dates, and market comparisons.")
