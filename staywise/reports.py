@@ -201,11 +201,25 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
     dashboard.column_dimensions["A"].width = 35
     dashboard.column_dimensions["B"].width = 22
     dashboard.column_dimensions["C"].width = 92
+    for cell_ref in ("B6", "B9"):
+        dashboard[cell_ref].number_format = '€#,##0.00;[Red]-€#,##0.00'
+        dashboard[cell_ref].font = Font(size=14, color=NAVY, bold=True)
+    for row in range(12, 24):
+        dashboard.cell(row=row, column=2).number_format = '€#,##0.00;[Red]-€#,##0.00'
     for ws in (monthly_ws, detail):
         for row in ws.iter_rows(min_row=2):
             for cell in row:
                 if cell.is_date:
                     cell.number_format = "dd mmm yyyy"
+    for row in monthly_ws.iter_rows(min_row=2, min_col=4, max_col=5):
+        for cell in row:
+            cell.number_format = '€#,##0.00;[Red]-€#,##0.00'
+    for row in detail.iter_rows(min_row=2, min_col=9, max_col=10):
+        for cell in row:
+            cell.number_format = '€#,##0.00;[Red]-€#,##0.00'
+    for row in ledger.iter_rows(min_row=2, min_col=3, max_col=3):
+        for cell in row:
+            cell.number_format = '€#,##0.00;[Red]-€#,##0.00'
     output = BytesIO()
     wb.save(output)
     return output.getvalue()
