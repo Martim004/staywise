@@ -16,7 +16,7 @@ from staywise.database import (add_blocked_dates, add_comparable, add_property, 
                                delete_blocked_dates, delete_comparable, delete_property, delete_reservation,
                                get_blocked_dates, get_comparables,
                                get_properties, get_reservations, get_settings, init_db, is_demo_mode,
-                               seed_demo_data, update_property,
+                               update_property,
                                set_comparable_selected)
 from staywise.imports import export_csv, parse_booking_csv, template_csv
 from staywise.inside_airbnb import LISBON_LISTINGS_URL, SOURCE_PAGE, listings_within_radius
@@ -39,17 +39,84 @@ div[data-testid="stForm"] {background:white;padding:18px;border:1px solid #E3EAE
 </style>
 """, unsafe_allow_html=True)
 
+DEMO_PROPERTY_NAME = "Casa T2 do Campo de Ourique"
+DEMO_PROPERTY_ALIASES = {
+    DEMO_PROPERTY_NAME,
+    "Campo de Ourique T2 · fictional example",
+    "Campo de Ourique T2 (demo)",
+}
+
+
+def ensure_public_demo_example() -> None:
+    """Create the fictional Campo example and its demo records in this session's DB."""
+    homes = get_properties()
+    sample = next((p for p in homes if p["name"] in DEMO_PROPERTY_ALIASES), None)
+    if sample is None:
+        sample_id = add_property({
+            "name": DEMO_PROPERTY_NAME, "area": "Campo de Ourique, Lisbon · fictional sample area",
+            "bedrooms": 2, "capacity": 4, "latitude": 38.719, "longitude": -9.165,
+            "airbnb_url": "", "booking_url": "",
+        })
+        sample = next(p for p in get_properties() if p["id"] == sample_id)
+    property_id = int(sample["id"])
+    if sample["name"] != DEMO_PROPERTY_NAME:
+        update_property(property_id, {**sample, "name": DEMO_PROPERTY_NAME,
+                                       "area": "Campo de Ourique, Lisbon · fictional sample area",
+                                       "bedrooms": 2, "capacity": 4})
+
+    if not get_reservations(property_id):
+        today = date.today()
+        guest_names = ["Alex Example", "Jamie Sample", "Taylor Demo", "Morgan Fiction", "Riley Sample"]
+        stay_number = 0
+        for month in range(1, 13):
+            month_start = date(today.year, month, 1)
+            month_days = calendar.monthrange(today.year, month)[1]
+            for offset in range(0, month_days, 5):
+                checkin = month_start + timedelta(days=offset)
+                checkout = checkin + timedelta(days=min(3, month_days - offset))
+                stay_number += 1
+                add_reservation({
+                    "guest_name": guest_names[stay_number % len(guest_names)],
+                    "email": f"guest{stay_number}@example.test", "phone": "+351 900 000 000",
+                    "checkin": checkin.isoformat(), "checkout": checkout.isoformat(), "guests": 2,
+                    "nightly_rate": 150 if month in {6, 7, 8, 9} else 112,
+                    "status": "completed" if checkout <= today else "confirmed",
+                    "source": "Airbnb (fictional sample)",
+                    "notes": "Fictional sample booking for demonstration; not a real guest.",
+                    "property_id": property_id,
+                })
+
+    if not get_blocked_dates(property_id):
+        blocked_start = date.today() + timedelta(days=70)
+        add_blocked_dates(blocked_start.isoformat(), (blocked_start + timedelta(days=3)).isoformat(),
+                          "Sample owner stay · fictional", property_id)
+
+    if not get_comparables(property_id):
+        for name, distance, rate in [
+            ("Fictional T2 with balcony", 0.4, 138),
+            ("Fictional renovated T2", 0.8, 152),
+            ("Fictional courtyard apartment", 1.1, 145),
+        ]:
+            add_comparable({
+                "name": name, "area": "Campo de Ourique · fictional sample",
+                "bedrooms": 2, "capacity": 4, "distance_km": distance,
+                "nightly_rate": rate, "observed_date": date.today().isoformat(), "url": "",
+                "notes": "Fictional comparison for demonstration; not a real listing.",
+                "selected": 1, "property_id": property_id,
+            })
+
+
 init_db()
-if is_demo_mode():
-    seed_demo_data()
 READ_ONLY = is_demo_mode()
+if READ_ONLY:
+    ensure_public_demo_example()
 
 settings = get_settings()
 properties = get_properties()
 if "pending_property_id" in st.session_state:
     st.session_state["selected_property_id"] = st.session_state.pop("pending_property_id")
 if is_demo_mode() and not st.session_state.get("demo_sample_defaulted"):
-    demo_home = next((p for p in properties if p["name"] == "Casa T2 do Campo de Ourique"), None)
+    demo_home = next((p for p in properties if p["name"] == DEMO_PROPERTY_NAME), None)
     if demo_home:
         st.session_state["selected_property_id"] = demo_home["id"]
         st.session_state["demo_sample_defaulted"] = True
@@ -107,7 +174,7 @@ with st.sidebar:
     page = st.radio("Workspace", ["Overview", "Bookings", "Calendar", "Market", "Revenue"], label_visibility="collapsed")
     property_ids = [p["id"] for p in properties]
     if st.session_state.get("selected_property_id") not in property_ids:
-        demo_home = next((p for p in properties if p["name"] == "Casa T2 do Campo de Ourique"), None)
+        demo_home = next((p for p in properties if p["name"] == DEMO_PROPERTY_NAME), None)
         st.session_state["selected_property_id"] = demo_home["id"] if demo_home else property_ids[0]
     active_property_id = st.selectbox("Rental property", property_ids,
                                       format_func=lambda pid: next(p["name"] for p in properties if p["id"] == pid),
@@ -167,7 +234,7 @@ if page == "Overview":
                     st.rerun()
         st.divider()
         st.subheader("Remove this rental")
-        if READ_ONLY and active_property["name"] == "Casa T2 do Campo de Ourique":
+        if READ_ONLY and active_property["name"] == DEMO_PROPERTY_NAME:
             st.info("This built-in fictional Campo de Ourique example is kept in every demo session.")
         else:
             st.warning("Removing this property permanently deletes its reservations and guest contact details, blocked dates, and market comparisons.")
