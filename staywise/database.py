@@ -91,7 +91,7 @@ def init_db() -> None:
             conn.execute("ALTER TABLE comparables ADD COLUMN property_id INTEGER REFERENCES properties(id)")
         legacy = {row["key"]: row["value"] for row in conn.execute("SELECT key,value FROM settings")}
         first = conn.execute("SELECT id FROM properties ORDER BY id LIMIT 1").fetchone()
-        if first is None:
+        if first is None and not is_demo_mode():
             cursor = conn.execute("""INSERT INTO properties(name,area,bedrooms,capacity,latitude,longitude)
                 VALUES(?,?,?,?,?,?)""", (
                 legacy.get("property_name", DEFAULTS["property_name"]),
@@ -102,11 +102,12 @@ def init_db() -> None:
                 float(legacy.get("longitude", DEFAULTS["longitude"])),
             ))
             first_id = int(cursor.lastrowid)
-        else:
+        elif first is not None:
             first_id = int(first["id"])
-        conn.execute("UPDATE reservations SET property_id=? WHERE property_id IS NULL", (first_id,))
-        conn.execute("UPDATE blocked_dates SET property_id=? WHERE property_id IS NULL", (first_id,))
-        conn.execute("UPDATE comparables SET property_id=? WHERE property_id IS NULL", (first_id,))
+        if first is not None or not is_demo_mode():
+            conn.execute("UPDATE reservations SET property_id=? WHERE property_id IS NULL", (first_id,))
+            conn.execute("UPDATE blocked_dates SET property_id=? WHERE property_id IS NULL", (first_id,))
+            conn.execute("UPDATE comparables SET property_id=? WHERE property_id IS NULL", (first_id,))
 
 
 def _rows(sql: str, params: tuple = ()) -> list[dict[str, Any]]:
@@ -231,65 +232,12 @@ def save_monthly_assumptions(values: dict[int, dict[str, float]]) -> None:
 
 
 def seed_demo_data() -> None:
-    today = date.today()
-    current_year = today.year
-    properties = get_properties()
-    demo_property = {"name":"Campo de Ourique T2 (demo)","area":"Campo de Ourique, Lisbon","bedrooms":2,"capacity":4,
-                    "latitude":38.719,"longitude":-9.165,"airbnb_url":"","booking_url":""}
-    update_property(properties[0]["id"], demo_property)
+    """Remove the legacy preloaded demo home so users can show onboarding."""
     with connect() as conn:
-        reservation_count = conn.execute("SELECT COUNT(*) FROM reservations").fetchone()[0]
-        comparable_count = conn.execute("SELECT COUNT(*) FROM comparables").fetchone()[0]
-    if not reservation_count:
-        if not comparable_count:
-            for item in [
-                {"name":"Sample apartment near the river","area":"Central Lisbon","bedrooms":2,"capacity":4,"distance_km":0.4,"nightly_rate":145,"observed_date":today.isoformat(),"url":"https://example.test/listing-a","notes":"Fictional comparison listing","selected":1},
-                {"name":"Demo flat with balcony","area":"Central Lisbon","bedrooms":2,"capacity":4,"distance_km":0.7,"nightly_rate":159,"observed_date":today.isoformat(),"url":"https://example.test/listing-b","notes":"Fictional comparison listing","selected":1},
-                {"name":"Example studio","area":"Central Lisbon","bedrooms":1,"capacity":2,"distance_km":0.2,"nightly_rate":102,"observed_date":today.isoformat(),"url":"https://example.test/listing-c","notes":"Fictional comparison listing","selected":1},
-            ]:
-                add_comparable(item)
-        blocked_start = today + timedelta(days=70)
-        if not get_blocked_dates():
-            add_blocked_dates(blocked_start.isoformat(), (blocked_start + timedelta(days=4)).isoformat(), "Owner stay (sample)")
-        save_settings({"property_name":demo_property["name"],"property_area":demo_property["area"],"bedrooms":"2","capacity":"4",
-                       "latitude":"38.719","longitude":"-9.165"})
-    # Fill the fictional calendar to a 60% target, preserving any sample records already present.
-    bookings = get_reservations(properties[0]["id"])
-    guest_names = ["Alex Example", "Jamie Sample", "Taylor Demo", "Morgan Fiction", "Riley Sample"]
-    for month in range(1, 13):
-        days = __import__("calendar").monthrange(current_year, month)[1]
-        target = round(days * 0.60)
-        start_month = date(current_year, month, 1)
-        month_end = date(current_year + 1, 1, 1) if month == 12 else date(current_year, month + 1, 1)
-        def occupied_nights() -> set[date]:
-            occupied: set[date] = set()
-            for booking in bookings:
-                if booking["status"] not in {"confirmed", "completed"}:
-                    continue
-                start, end = date.fromisoformat(booking["checkin"]), date.fromisoformat(booking["checkout"])
-                cursor = max(start, start_month)
-                while cursor < min(end, month_end):
-                    occupied.add(cursor)
-                    cursor += timedelta(days=1)
-            return occupied
-        stay_number = 0
-        for offset in range(0, days, 5):
-            occupied = occupied_nights()
-            needed = target - len(occupied)
-            if needed <= 0:
-                break
-            start = start_month + timedelta(days=offset)
-            duration = min(3, needed, (month_end - start).days)
-            end = start + timedelta(days=duration)
-            if any(start <= night < end for night in occupied):
-                continue
-            stay_number += 1
-            item = {"guest_name":guest_names[(month + stay_number) % len(guest_names)],"email":"guest@example.test",
-                    "phone":"+351 900 000 000","checkin":start.isoformat(),"checkout":end.isoformat(),"guests":2,
-                    "nightly_rate":(150 if month in [6,7,8,9] else 112),
-                    "status":"completed" if end <= today else "confirmed","source":"Airbnb (sample)",
-                    "notes":"Fictional demo guest; seeded for 60% sample occupancy","property_id":properties[0]["id"]}
-            add_reservation(item)
-            bookings.append(item)
-    save_monthly_assumptions({month: {"occupancy_percent": min(85, 42 + (month in [6,7,8,9]) * 22),
-                                      "nightly_rate": (178 if month in [6,7,8,9] else 118 if month in [4,5,10] else 96)} for month in range(1,13)})
+        legacy = conn.execute("SELECT id FROM properties WHERE name='Campo de Ourique T2 (demo)' AND area='Campo de Ourique, Lisbon'").fetchone()
+        if legacy:
+            legacy_id = int(legacy["id"])
+            conn.execute("DELETE FROM reservations WHERE property_id=?", (legacy_id,))
+            conn.execute("DELETE FROM blocked_dates WHERE property_id=?", (legacy_id,))
+            conn.execute("DELETE FROM comparables WHERE property_id=?", (legacy_id,))
+            conn.execute("DELETE FROM properties WHERE id=?", (legacy_id,))
