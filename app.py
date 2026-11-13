@@ -16,7 +16,7 @@ from staywise.database import (add_blocked_dates, add_comparable, add_property, 
                                delete_blocked_dates, delete_comparable, delete_property, delete_reservation,
                                get_blocked_dates, get_comparables,
                                get_properties, get_reservations, get_settings, init_db, is_demo_mode,
-                               seed_demo_data, update_property,
+                               is_demo_sample_property, seed_demo_data, update_property,
                                set_comparable_selected)
 from staywise.imports import export_csv, parse_booking_csv, template_csv
 from staywise.inside_airbnb import LISBON_LISTINGS_URL, SOURCE_PAGE, listings_within_radius
@@ -161,21 +161,24 @@ if page == "Overview":
                     st.rerun()
         st.divider()
         st.subheader("Remove this rental")
-        st.warning("Removing this property permanently deletes its reservations and guest contact details, blocked dates, and market comparisons.")
-        last_local_property = len(properties) == 1 and not READ_ONLY
-        if last_local_property:
-            st.caption("Add another property before removing this one; the local app must keep at least one rental.")
-        confirm_delete = st.checkbox("I understand that this property's data will be permanently deleted.",
-                                     key=f"confirm_delete_property_{active_property_id}")
-        if st.button("Delete selected property", type="secondary",
-                     disabled=not confirm_delete or last_local_property):
-            delete_property(active_property_id)
-            remaining_properties = get_properties()
-            if remaining_properties:
-                st.session_state["pending_property_id"] = remaining_properties[0]["id"]
-            else:
-                st.session_state.pop("selected_property_id", None)
-            st.rerun()
+        if is_demo_sample_property(active_property_id):
+            st.info("This built-in fictional Campo de Ourique example is kept in every demo session.")
+        else:
+            st.warning("Removing this property permanently deletes its reservations and guest contact details, blocked dates, and market comparisons.")
+            last_local_property = len(properties) == 1 and not READ_ONLY
+            if last_local_property:
+                st.caption("Add another property before removing this one; the local app must keep at least one rental.")
+            confirm_delete = st.checkbox("I understand that this property's data will be permanently deleted.",
+                                         key=f"confirm_delete_property_{active_property_id}")
+            if st.button("Delete selected property", type="secondary",
+                         disabled=not confirm_delete or last_local_property):
+                delete_property(active_property_id)
+                remaining_properties = get_properties()
+                if remaining_properties:
+                    st.session_state["pending_property_id"] = remaining_properties[0]["id"]
+                else:
+                    st.session_state.pop("selected_property_id", None)
+                st.rerun()
     link_cols = st.columns(2)
     if active_property.get("airbnb_url"):
         link_cols[0].link_button("Open Airbnb listing", active_property["airbnb_url"])
