@@ -219,6 +219,8 @@ DEFAULTS = {
     "latitude": "38.719", "longitude": "-9.165",
 }
 
+DEMO_PROPERTY_NAME = "Campo de Ourique T2 · fictional example"
+
 
 def get_settings() -> dict[str, str]:
     settings = DEFAULTS.copy()
@@ -248,12 +250,51 @@ def save_monthly_assumptions(values: dict[int, dict[str, float]]) -> None:
 
 
 def seed_demo_data() -> None:
-    """Remove the legacy preloaded demo home so users can show onboarding."""
-    with connect() as conn:
-        legacy = conn.execute("SELECT id FROM properties WHERE name='Campo de Ourique T2 (demo)' AND area='Campo de Ourique, Lisbon'").fetchone()
-        if legacy:
-            legacy_id = int(legacy["id"])
-            conn.execute("DELETE FROM reservations WHERE property_id=?", (legacy_id,))
-            conn.execute("DELETE FROM blocked_dates WHERE property_id=?", (legacy_id,))
-            conn.execute("DELETE FROM comparables WHERE property_id=?", (legacy_id,))
-            conn.execute("DELETE FROM properties WHERE id=?", (legacy_id,))
+    """Ensure the public demo always includes a practical, fully fictional sample home."""
+    props = get_properties()
+    sample = next((p for p in props if p["name"] == DEMO_PROPERTY_NAME), None)
+    if sample is None:
+        sample_id = add_property({
+            "name": DEMO_PROPERTY_NAME, "area": "Campo de Ourique, Lisbon (approximate)",
+            "bedrooms": 2, "capacity": 4, "latitude": 38.719, "longitude": -9.165,
+            "airbnb_url": "", "booking_url": "",
+        })
+        sample = next(p for p in get_properties() if p["id"] == sample_id)
+    property_id = int(sample["id"])
+
+    if not get_reservations(property_id):
+        today = date.today()
+        year = today.year
+        guest_names = ["Alex Example", "Jamie Sample", "Taylor Demo", "Morgan Fiction", "Riley Sample"]
+        stay_number = 0
+        for month in range(1, 13):
+            month_start = date(year, month, 1)
+            days = calendar.monthrange(year, month)[1]
+            for offset in range(0, days, 5):
+                checkin = month_start + timedelta(days=offset)
+                nights = min(3, days - offset)
+                checkout = checkin + timedelta(days=nights)
+                stay_number += 1
+                add_reservation({
+                    "guest_name": guest_names[stay_number % len(guest_names)],
+                    "email": f"guest{stay_number}@example.test", "phone": "+351 900 000 000",
+                    "checkin": checkin.isoformat(), "checkout": checkout.isoformat(), "guests": 2,
+                    "nightly_rate": 150 if month in {6, 7, 8, 9} else 112,
+                    "status": "completed" if checkout <= today else "confirmed",
+                    "source": "Airbnb (fictional sample)",
+                    "notes": "Fictional sample booking for demonstration; not a real guest.",
+                    "property_id": property_id,
+                })
+
+    if not get_blocked_dates(property_id):
+        blocked_start = date.today() + timedelta(days=70)
+        add_blocked_dates(blocked_start.isoformat(), (blocked_start + timedelta(days=3)).isoformat(),
+                          "Sample owner stay · fictional", property_id)
+
+
+def is_demo_sample_property(property_id: int) -> bool:
+    """Whether a property is the built-in demo example that must be retained."""
+    return is_demo_mode() and any(
+        int(p["id"]) == int(property_id) and p["name"] == DEMO_PROPERTY_NAME
+        for p in get_properties()
+    )
