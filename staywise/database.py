@@ -219,7 +219,12 @@ DEFAULTS = {
     "latitude": "38.719", "longitude": "-9.165",
 }
 
-DEMO_PROPERTY_NAME = "Campo de Ourique T2 · fictional example"
+DEMO_PROPERTY_NAME = "Casa T2 do Campo de Ourique"
+DEMO_PROPERTY_ALIASES = {
+    DEMO_PROPERTY_NAME,
+    "Campo de Ourique T2 · fictional example",
+    "Campo de Ourique T2 (demo)",
+}
 
 
 def get_settings() -> dict[str, str]:
@@ -252,7 +257,7 @@ def save_monthly_assumptions(values: dict[int, dict[str, float]]) -> None:
 def seed_demo_data() -> None:
     """Ensure the public demo always includes a practical, fully fictional sample home."""
     props = get_properties()
-    sample = next((p for p in props if p["name"] == DEMO_PROPERTY_NAME), None)
+    sample = next((p for p in props if p["name"] in DEMO_PROPERTY_ALIASES), None)
     if sample is None:
         sample_id = add_property({
             "name": DEMO_PROPERTY_NAME, "area": "Campo de Ourique, Lisbon (approximate)",
@@ -261,6 +266,9 @@ def seed_demo_data() -> None:
         })
         sample = next(p for p in get_properties() if p["id"] == sample_id)
     property_id = int(sample["id"])
+    with connect() as conn:
+        conn.execute("UPDATE properties SET name=?, area=?, bedrooms=2, capacity=4 WHERE id=?",
+                     (DEMO_PROPERTY_NAME, "Campo de Ourique, Lisbon · fictional sample area", property_id))
 
     if not get_reservations(property_id):
         today = date.today()
@@ -290,6 +298,22 @@ def seed_demo_data() -> None:
         blocked_start = date.today() + timedelta(days=70)
         add_blocked_dates(blocked_start.isoformat(), (blocked_start + timedelta(days=3)).isoformat(),
                           "Sample owner stay · fictional", property_id)
+
+    if not get_comparables(property_id):
+        observed = date.today().isoformat()
+        examples = [
+            ("Fictional T2 with balcony", 0.4, 138),
+            ("Fictional renovated T2", 0.8, 152),
+            ("Fictional courtyard apartment", 1.1, 145),
+        ]
+        for name, distance, rate in examples:
+            add_comparable({
+                "name": name, "area": "Campo de Ourique · fictional sample",
+                "bedrooms": 2, "capacity": 4, "distance_km": distance,
+                "nightly_rate": rate, "observed_date": observed, "url": "",
+                "notes": "Fictional comparison for demonstration; not a real listing.",
+                "selected": 1, "property_id": property_id,
+            })
 
 
 def is_demo_sample_property(property_id: int) -> bool:
