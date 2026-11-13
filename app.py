@@ -20,6 +20,7 @@ from staywise.database import (add_blocked_dates, add_comparable, add_property, 
                                set_comparable_selected)
 from staywise.imports import export_csv, parse_booking_csv, template_csv
 from staywise.inside_airbnb import LISBON_LISTINGS_URL, SOURCE_PAGE, listings_within_radius
+from staywise.reports import build_revenue_workbook
 
 
 st.set_page_config(page_title="StayWise | Rental studio", page_icon="🏡", layout="wide")
@@ -46,6 +47,33 @@ READ_ONLY = is_demo_mode()
 settings = get_settings()
 properties = get_properties()
 
+if is_demo_mode() and not properties:
+    st.markdown('<div class="brand">StayWise<span style="color:#1D7A78">.</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="eyebrow">Portfolio setup</div>', unsafe_allow_html=True)
+    st.title("Add your first rental")
+    st.markdown('<p class="subtle">Start with a property profile, then explore its calendar, market map, and revenue workspace. This public walkthrough is shared, so enter fictional property information only. Guest records stay disabled.</p>', unsafe_allow_html=True)
+    with st.form("first_demo_property", clear_on_submit=True):
+        p1, p2, p3 = st.columns(3)
+        new_name = p1.text_input("Property name *", placeholder="e.g. Lisbon City Apartment")
+        new_area = p2.text_input("Area / neighborhood", placeholder="e.g. Campo de Ourique, Lisbon")
+        new_bedrooms = p3.number_input("Bedrooms", min_value=0, max_value=30, value=2)
+        p1, p2, p3 = st.columns(3)
+        new_capacity = p1.number_input("Guest capacity", min_value=1, max_value=100, value=4)
+        new_lat = p2.number_input("Latitude", min_value=-90.0, max_value=90.0, value=38.719, format="%.6f")
+        new_lon = p3.number_input("Longitude", min_value=-180.0, max_value=180.0, value=-9.165, format="%.6f")
+        p1, p2 = st.columns(2)
+        new_airbnb = p1.text_input("Airbnb listing URL")
+        new_booking = p2.text_input("Booking.com listing URL")
+        if st.form_submit_button("Add property", type="primary"):
+            if not new_name.strip():
+                st.error("Enter a name for this property.")
+            else:
+                new_id = add_property({"name":new_name.strip(),"area":new_area.strip(),"bedrooms":int(new_bedrooms),
+                    "capacity":int(new_capacity),"latitude":float(new_lat),"longitude":float(new_lon),
+                    "airbnb_url":new_airbnb.strip(),"booking_url":new_booking.strip()})
+                st.session_state["selected_property_id"] = new_id
+                st.rerun()
+    st.stop()
 
 def money(value: float) -> str:
     return f"€{value:,.2f}"
@@ -81,7 +109,7 @@ with st.sidebar:
     st.markdown(f"**{active_property['name']}**")
     st.caption(active_property.get("area") or "Add a location in property settings")
     if is_demo_mode():
-        st.info("Public demo · fictional records only · read-only", icon="🧪")
+        st.info("Public walkthrough · fictional property details only · guest records disabled", icon="🧪")
     else:
         st.caption("Private local database")
     st.caption("EUR · English")
@@ -94,7 +122,7 @@ blocks = get_blocked_dates(active_property_id)
 comps = get_comparables(active_property_id)
 
 if READ_ONLY:
-    st.warning("This public demo is read-only and contains fictional records. Run StayWise locally to add or import real guest details.", icon="🔒")
+    st.warning("Public walkthrough: property profiles are shared and visible to visitors. Use fictional property details only. Guest records, CSV uploads, and booking edits are disabled.", icon="🔒")
 
 
 if page == "Overview":
@@ -120,7 +148,7 @@ if page == "Overview":
             p1,p2 = st.columns(2)
             new_airbnb = p1.text_input("Airbnb listing URL")
             new_booking = p2.text_input("Booking.com listing URL")
-            if st.form_submit_button("Add property", type="primary", disabled=READ_ONLY):
+            if st.form_submit_button("Add property", type="primary"):
                 if not new_name.strip():
                     st.error("Enter a name for this property.")
                 else:
@@ -323,7 +351,7 @@ elif page == "Market":
                     st.subheader("Nearby competition map")
                     st.caption(f"{len(nearby):,} matching Airbnb listings · {radius_km:.1f} km radius. Listings group together when zoomed out; zoom in to separate individual homes.")
                     home_lat, home_lon = float(settings["latitude"]), float(settings["longitude"])
-                    competition_map = folium.Map(location=[home_lat, home_lon], zoom_start=14, tiles="CartoDB positron",
+                    competition_map = folium.Map(location=[home_lat, home_lon], zoom_start=14, tiles="OpenStreetMap",
                         control_scale=True, scrollWheelZoom=True, prefer_canvas=True)
                     home_layer = folium.FeatureGroup(name="Your property", show=True).add_to(competition_map)
                     folium.Circle(location=[home_lat, home_lon], radius=radius_km * 1000, color="#16877E",
@@ -473,3 +501,10 @@ elif page == "Revenue":
         monthly_ytd = pd.DataFrame([{"Month":calendar.month_abbr[m],"Gross revenue (€)":sum(value for day,value in ytd.items() if day.month == m)} for m in range(1,today.month+1)]).set_index("Month")
         st.bar_chart(monthly_ytd, height=280, color="#1D7A78")
         st.caption("This is booked gross revenue from nightly rates. It does not estimate unbooked dates or subtract fees, costs, or taxes.")
+    st.divider()
+    st.subheader("Download revenue workbook")
+    st.caption("An Excel workbook with a KPI dashboard and chart, monthly summary, daily revenue ledger, and reservation details for the current year to date.")
+    workbook = build_revenue_workbook(active_property["name"], date.today().year, reservations, date.today())
+    st.download_button("Download revenue Excel workbook", workbook,
+                       f"staywise-revenue-{date.today().year}.xlsx",
+                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
