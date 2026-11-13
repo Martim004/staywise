@@ -13,7 +13,7 @@ from streamlit_folium import st_folium
 
 from staywise.calculations import competitor_summary, date_ranges_overlap, validate_reservation
 from staywise.database import (add_blocked_dates, add_comparable, add_property, add_reservation,
-                               delete_blocked_dates, delete_comparable, delete_reservation,
+                               delete_blocked_dates, delete_comparable, delete_property, delete_reservation,
                                get_blocked_dates, get_comparables,
                                get_properties, get_reservations, get_settings, init_db, is_demo_mode,
                                seed_demo_data, update_property,
@@ -136,7 +136,7 @@ if page == "Overview":
     cols[0].metric("Blocked date ranges", len(blocks))
     cols[1].metric("Manual comparable median", money(market["median_rate"]) if market["median_rate"] is not None else "—")
     st.info("Use the Calendar to see availability by day, or Market to compare nearby Lisbon Airbnb listings by radius.")
-    with st.expander("Add another rental property"):
+    with st.expander("Manage your rental portfolio"):
         st.caption("Save each home separately, then switch between them from the property selector. Airbnb and Booking.com links open your listing; StayWise does not sync accounts directly.")
         with st.form("add_property", clear_on_submit=True):
             p1,p2,p3 = st.columns(3)
@@ -159,6 +159,23 @@ if page == "Overview":
                         "airbnb_url":new_airbnb.strip(),"booking_url":new_booking.strip()})
                     st.session_state["pending_property_id"] = new_id
                     st.rerun()
+        st.divider()
+        st.subheader("Remove this rental")
+        st.warning("Removing this property permanently deletes its reservations and guest contact details, blocked dates, and market comparisons.")
+        last_local_property = len(properties) == 1 and not READ_ONLY
+        if last_local_property:
+            st.caption("Add another property before removing this one; the local app must keep at least one rental.")
+        confirm_delete = st.checkbox("I understand that this property's data will be permanently deleted.",
+                                     key=f"confirm_delete_property_{active_property_id}")
+        if st.button("Delete selected property", type="secondary",
+                     disabled=not confirm_delete or last_local_property):
+            delete_property(active_property_id)
+            remaining_properties = get_properties()
+            if remaining_properties:
+                st.session_state["pending_property_id"] = remaining_properties[0]["id"]
+            else:
+                st.session_state.pop("selected_property_id", None)
+            st.rerun()
     link_cols = st.columns(2)
     if active_property.get("airbnb_url"):
         link_cols[0].link_button("Open Airbnb listing", active_property["airbnb_url"])
