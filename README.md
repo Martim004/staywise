@@ -10,7 +10,7 @@ StayWise helps a short-term rental owner manage multiple homes and their stays, 
 - Team members and student numbers: **Add all names and student numbers before course submission.**
 - Repository: https://github.com/Martim004/staywise
 
-The public walkthrough starts with an empty portfolio so you can demonstrate adding a home. Property profiles are shared with other visitors, so use fictional property information only. Guest records and reservation edits are disabled. Never commit guest details or a local database file.
+The public walkthrough starts with an empty portfolio so you can demonstrate adding a home. Fictional property details are stored only in the visitor's browser session; guest records and reservation edits are disabled. Never commit guest details or a local database file.
 
 ## Run locally
 
@@ -55,7 +55,7 @@ Dates use `YYYY-MM-DD`. Status must be `confirmed`, `completed`, or `cancelled`.
 
 ## Public demo deployment
 
-The demo is deployed from this public GitHub repository on [Streamlit Community Cloud](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app). In Advanced settings, `STAYWISE_DEMO = "1"` is configured in Secrets TOML. The public demo lets visitors create shared fictional property profiles but blocks guest and reservation data. Never deploy personal guest records.
+The demo is deployed from this public GitHub repository on [Streamlit Community Cloud](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app). In Advanced settings, `STAYWISE_DEMO = "1"` is configured in Secrets TOML. Visitors can create session-only fictional property profiles; guest and reservation data entry is blocked. Never deploy personal guest records.
 
 ## Project structure
 
