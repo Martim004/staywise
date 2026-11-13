@@ -10,7 +10,7 @@ StayWise helps a short-term rental owner manage multiple homes and their stays, 
 - Team members and student numbers: **Add all names and student numbers before course submission.**
 - Repository: https://github.com/Martim004/staywise
 
-The public walkthrough starts with an empty portfolio so you can demonstrate adding a home. Fictional property details are stored only in the visitor's browser session; guest records and reservation edits are disabled. Never commit guest details or a local database file.
+The public walkthrough includes a protected Campo de Ourique T2 example with fictional guest and booking records at roughly 60% occupancy. Its data is isolated to each browser session. Visitors can add and remove extra properties; the built-in example stays available, and guest records cannot be edited. Never commit real guest details or a local database file.
 
 ## Run locally
 
@@ -35,14 +35,14 @@ python -m unittest discover -s tests
 
 - Reservation records with guest details, stay dates, source, and status; CSV import and export.
 - A multi-property portfolio with property-specific reservations, blocked dates, comparables, map coordinates, and Airbnb / Booking.com listing links.
-- Add or remove rentals from the portfolio; removing a rental also removes its linked reservations, guest contacts, blocked dates, and comparisons.
+- Add or remove rentals from the portfolio; removing a rental also removes its linked reservations, guest contacts, blocked dates, and comparisons. The built-in fictional demo home is protected from deletion.
 - Color-coded month calendar showing booked, blocked, and available nights.
 - Lisbon Airbnb market comparisons from the public Inside Airbnb listings snapshot, with a configurable radius, bedroom and capacity filters, price distribution, ratings, reviews, availability, and listing-level details.
 - An OpenStreetMap street view centered on the selected home, with clustered competitors, hover names, and listing popups that link to Airbnb pages.
 - Manual comparable records for Booking.com or other sources, since Inside Airbnb publishes Airbnb data only.
 - Revenue views for a chosen night, a chosen month, and current-year-to-date. Revenue is actual booked gross nightly revenue, not a projection.
 - Revenue Excel workbook with a KPI dashboard and chart, monthly summary, daily ledger, and reservation detail.
-- First-run demo onboarding to add a property profile using fictional information.
+- Fictional Campo de Ourique sample home and bookings for hands-on demos, isolated by visitor session.
 
 The Inside Airbnb public snapshot is downloaded on request and cached for 24 hours. Prices are observations from that snapshot, not live booking quotes. Comparisons use straight-line distance and should be interpreted as market context, not an exact price prediction. Airbnb and Booking.com links open the owner's listing page; StayWise does not currently connect accounts or sync reservations directly. Airbnb API-connected software access and Booking.com connectivity require approved partner / property connections. Source: [Inside Airbnb data](https://insideairbnb.com/pt/get-the-data/).
 
