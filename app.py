@@ -49,7 +49,7 @@ properties = get_properties()
 if "pending_property_id" in st.session_state:
     st.session_state["selected_property_id"] = st.session_state.pop("pending_property_id")
 if is_demo_mode() and not st.session_state.get("demo_sample_defaulted"):
-    demo_home = next((p for p in properties if p["name"] == "Campo de Ourique T2 · fictional example"), None)
+    demo_home = next((p for p in properties if p["name"] == "Casa T2 do Campo de Ourique"), None)
     if demo_home:
         st.session_state["selected_property_id"] = demo_home["id"]
         st.session_state["demo_sample_defaulted"] = True
@@ -107,7 +107,7 @@ with st.sidebar:
     page = st.radio("Workspace", ["Overview", "Bookings", "Calendar", "Market", "Revenue"], label_visibility="collapsed")
     property_ids = [p["id"] for p in properties]
     if st.session_state.get("selected_property_id") not in property_ids:
-        demo_home = next((p for p in properties if p["name"] == "Campo de Ourique T2 · fictional example"), None)
+        demo_home = next((p for p in properties if p["name"] == "Casa T2 do Campo de Ourique"), None)
         st.session_state["selected_property_id"] = demo_home["id"] if demo_home else property_ids[0]
     active_property_id = st.selectbox("Rental property", property_ids,
                                       format_func=lambda pid: next(p["name"] for p in properties if p["id"] == pid),
@@ -167,7 +167,7 @@ if page == "Overview":
                     st.rerun()
         st.divider()
         st.subheader("Remove this rental")
-        if READ_ONLY and active_property["name"] == "Campo de Ourique T2 · fictional example":
+        if READ_ONLY and active_property["name"] == "Casa T2 do Campo de Ourique":
             st.info("This built-in fictional Campo de Ourique example is kept in every demo session.")
         else:
             st.warning("Removing this property permanently deletes its reservations and guest contact details, blocked dates, and market comparisons.")
