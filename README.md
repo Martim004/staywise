@@ -35,6 +35,7 @@ python -m unittest discover -s tests
 
 - Reservation records with guest details, stay dates, source, and status; CSV import and export.
 - A multi-property portfolio with property-specific reservations, blocked dates, comparables, map coordinates, and Airbnb / Booking.com listing links.
+- Add or remove rentals from the portfolio; removing a rental also removes its linked reservations, guest contacts, blocked dates, and comparisons.
 - Color-coded month calendar showing booked, blocked, and available nights.
 - Lisbon Airbnb market comparisons from the public Inside Airbnb listings snapshot, with a configurable radius, bedroom and capacity filters, price distribution, ratings, reviews, availability, and listing-level details.
 - An OpenStreetMap street view centered on the selected home, with clustered competitors, hover names, and listing popups that link to Airbnb pages.
