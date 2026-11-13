@@ -141,6 +141,15 @@ def update_property(property_id: int, item: dict[str, Any]) -> None:
             {**item, "id": property_id})
 
 
+def delete_property(property_id: int) -> None:
+    """Delete a property and all reservations, blocked dates, and comparables attached to it."""
+    with connect() as conn:
+        conn.execute("DELETE FROM reservations WHERE property_id=?", (property_id,))
+        conn.execute("DELETE FROM blocked_dates WHERE property_id=?", (property_id,))
+        conn.execute("DELETE FROM comparables WHERE property_id=?", (property_id,))
+        conn.execute("DELETE FROM properties WHERE id=?", (property_id,))
+
+
 def get_reservations(property_id: int | None = None) -> list[dict[str, Any]]:
     if property_id is None:
         return _rows("SELECT * FROM reservations ORDER BY checkin, id")
