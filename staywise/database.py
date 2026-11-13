@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import calendar
+import uuid
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -24,7 +25,13 @@ def is_demo_mode() -> bool:
 
 def database_path() -> Path:
     if is_demo_mode():
-        return Path(os.getenv("STAYWISE_DB_PATH", "/tmp/staywise-demo.sqlite3"))
+        try:
+            import streamlit as st
+            session_key = st.session_state.setdefault("staywise_demo_session", uuid.uuid4().hex)
+        except Exception:
+            session_key = "local"
+        default_path = f"/tmp/staywise-demo-{session_key}.sqlite3"
+        return Path(os.getenv("STAYWISE_DB_PATH", default_path))
     return Path(os.getenv("STAYWISE_DB_PATH", "data/staywise.sqlite3"))
 
 
