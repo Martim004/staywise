@@ -51,7 +51,7 @@ if is_demo_mode() and not properties:
     st.markdown('<div class="brand">StayWise<span style="color:#1D7A78">.</span></div>', unsafe_allow_html=True)
     st.markdown('<div class="eyebrow">Portfolio setup</div>', unsafe_allow_html=True)
     st.title("Add your first rental")
-    st.markdown('<p class="subtle">Start with a property profile, then explore its calendar, market map, and revenue workspace. This public walkthrough is shared, so enter fictional property information only. Guest records stay disabled.</p>', unsafe_allow_html=True)
+    st.markdown('<p class="subtle">Start with a property profile, then explore its calendar, market map, and revenue workspace. This public walkthrough keeps fictional property details in your browser session only. Guest records stay disabled.</p>', unsafe_allow_html=True)
     with st.form("first_demo_property", clear_on_submit=True):
         p1, p2, p3 = st.columns(3)
         new_name = p1.text_input("Property name *", placeholder="e.g. Lisbon City Apartment")
@@ -109,7 +109,7 @@ with st.sidebar:
     st.markdown(f"**{active_property['name']}**")
     st.caption(active_property.get("area") or "Add a location in property settings")
     if is_demo_mode():
-        st.info("Public walkthrough · fictional property details only · guest records disabled", icon="🧪")
+        st.info("Public walkthrough · session-only fictional details · guest records disabled", icon="🧪")
     else:
         st.caption("Private local database")
     st.caption("EUR · English")
@@ -122,7 +122,7 @@ blocks = get_blocked_dates(active_property_id)
 comps = get_comparables(active_property_id)
 
 if READ_ONLY:
-    st.warning("Public walkthrough: property profiles are shared and visible to visitors. Use fictional property details only. Guest records, CSV uploads, and booking edits are disabled.", icon="🔒")
+    st.warning("Public walkthrough: property profiles stay in this browser session. Use fictional property details only. Guest records, CSV uploads, and booking edits are disabled.", icon="🔒")
 
 
 if page == "Overview":
