@@ -54,6 +54,21 @@ div[data-testid="stForm"] {background:white;padding:18px;border:1px solid #E3EAE
 .revenue-chart-svg {display:block;width:100%;height:auto;}
 .revenue-section-title {font-family:Manrope,sans-serif;font-size:17px;font-weight:700;color:#17324d;margin:22px 0 4px;}
 .revenue-empty {background:#fff;border:1px dashed #cbd8dc;border-radius:16px;padding:22px;color:#657987;text-align:center;}
+.account-hero {position:relative;overflow:hidden;background:radial-gradient(circle at 86% 10%,#63aa9b 0,transparent 28%),linear-gradient(118deg,#17324d,#155f5d);border-radius:24px;padding:30px 34px;margin:8px 0 22px;color:white;box-shadow:0 14px 34px #17324d20;}
+.account-hero:after {content:'';position:absolute;width:240px;height:240px;border:1px solid #ffffff25;border-radius:50%;right:8%;top:-145px;box-shadow:0 0 0 32px #ffffff08,0 0 0 66px #ffffff06;pointer-events:none;}
+.account-hero-kicker {font-size:11px;font-weight:700;letter-spacing:1.7px;text-transform:uppercase;color:#c4e6dc;}
+.account-hero h1 {color:#fff;margin:10px 0 4px;font-size:36px;}
+.account-hero-copy {color:#deeeea;font-size:14px;}
+.account-layout {align-items:flex-start;}
+.st-key-account_menu,.st-key-account_detail {background:#fff;border:1px solid #e3eaed;border-radius:20px;padding:20px;box-shadow:0 6px 20px #17324d08;}
+.st-key-account_menu [data-testid="stButton"] button {min-height:48px;border-radius:12px;justify-content:flex-start;}
+.st-key-account_menu [data-testid="stButton"] button[kind="primary"] {background:#eaf2f1;border:1px solid #d9e9e5;color:#17324d;box-shadow:none;}
+.account-signout [data-testid="stButton"] button {border:0;background:transparent;text-decoration:underline;}
+.account-detail-card {min-height:330px;padding:26px 28px;}
+.account-detail-label {color:#1d7a78;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700;}
+.account-info-row {display:flex;justify-content:space-between;gap:20px;padding:14px 0;border-bottom:1px solid #edf1f2;color:#526676;}
+.account-info-row strong {color:#17324d;text-align:right;overflow-wrap:anywhere;}
+.account-secure-note {border-radius:14px;background:#edf6f2;padding:16px 18px;color:#315f55;margin-top:18px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -145,8 +160,8 @@ except Exception as exc:
     st.stop()
 
 READ_ONLY = public_demo
+# Ensure the fictional example is available in the walkthrough and every private account.
 if public_demo or auth_user:
-    # Keep the fictional Campo de Ourique example available in every new private portfolio.
     ensure_public_demo_example()
 
 settings = get_settings()
@@ -269,11 +284,40 @@ def load_postgres_snapshot() -> tuple[pd.DataFrame, dict] | None:
     return load_latest_snapshot()
 
 
+if st.session_state.pop("_staywise_open_account", False):
+    st.session_state["workspace_page"] = "Account"
+
+header_spacer, account_slot = st.columns([0.92, 0.08])
+with account_slot:
+    with st.popover(" ", icon=":material/account_circle:", help="Account menu"):
+        if auth_user:
+            menu_name = escape(auth_user.get("name") or "StayWise user")
+            st.markdown(f"**{menu_name}**")
+            st.caption(auth_user.get("email", "Google account connected"))
+            st.caption("Private Supabase portfolio")
+            if st.button("Account & privacy", icon=":material/manage_accounts:", use_container_width=True, key="user_menu_account"):
+                st.session_state["_staywise_open_account"] = True
+                st.rerun()
+            st.divider()
+            if st.button("Sign out", icon=":material/logout:", use_container_width=True, key="user_menu_sign_out"):
+                sign_out()
+                st.session_state.pop("selected_property_id", None)
+                st.rerun()
+        else:
+            st.markdown("**StayWise account**")
+            st.caption("Sign in to keep a private rental portfolio across devices.")
+            if auth_is_configured() and st.button(
+                "Continue with Google", icon=":material/login:", type="primary", use_container_width=True, key="user_menu_sign_in"
+            ):
+                sign_in()
+
+
 with st.sidebar:
     st.markdown('<div class="brand">StayWise<span style="color:#1D7A78">.</span></div>', unsafe_allow_html=True)
     st.caption("Short-stay rental studio")
     st.divider()
-    page = st.radio("Workspace", ["Overview", "Bookings", "Calendar", "Market", "Revenue", "Account"], label_visibility="collapsed")
+    page = st.radio("Workspace", ["Overview", "Bookings", "Calendar", "Market", "Revenue", "Account"],
+                    label_visibility="collapsed", key="workspace_page")
     property_ids = [p["id"] for p in properties]
     if st.session_state.get("selected_property_id") not in property_ids:
         demo_home = next((p for p in properties if p["name"] == DEMO_PROPERTY_NAME), None)
@@ -305,25 +349,92 @@ if READ_ONLY:
 
 
 if page == "Account":
-    st.markdown('<div class="eyebrow">Your account</div>', unsafe_allow_html=True)
-    st.title("Account & privacy")
     if auth_user:
-        st.success("Signed in with Google")
-        profile_left, profile_right = st.columns(2)
-        profile_left.metric("Email", auth_user["email"] or "Connected Google account")
-        profile_right.metric("Portfolio storage", "Private Supabase database")
-        if auth_user.get("name"):
-            st.write(f"**Name:** {auth_user['name']}")
-        st.caption("Your property profiles, bookings, guest contact details, blocked dates, comparables, and settings are isolated to your Google account. StayWise does not store your Google password or OAuth client secret.")
-        st.info("The Google account manages your sign-in. Use Google account security settings to change its password or enable two-step verification.")
-        if st.button("Sign out", type="secondary"):
-            sign_out()
-            st.session_state.pop("selected_property_id", None)
-            st.rerun()
+        display_name = auth_user.get("name") or auth_user.get("email", "there").split("@")[0]
+        first_name = escape(display_name.split()[0])
+        st.markdown(
+            f'<section class="account-hero"><div class="account-hero-kicker">StayWise account</div>'
+            f'<h1>Olá, {first_name}</h1><div class="account-hero-copy">Your rental workspace, profile, and privacy settings.</div></section>',
+            unsafe_allow_html=True,
+        )
+        menu_col, detail_col = st.columns([0.32, 0.68], gap="large")
+        section = st.session_state.get("account_section", "Profile")
+        account_items = [
+            ("Profile", "person"),
+            ("Rental portfolio", "holiday_village"),
+            ("Sign-in & security", "verified_user"),
+            ("Privacy & data", "shield_lock"),
+        ]
+        with menu_col:
+            with st.container(key="account_menu", border=True):
+                st.markdown('<div class="account-detail-label">Your account</div>', unsafe_allow_html=True)
+                st.write("")
+                for item_label, item_icon in account_items:
+                    if st.button(
+                        item_label,
+                        icon=f":material/{item_icon}:",
+                        type="primary" if section == item_label else "secondary",
+                        use_container_width=True,
+                        key=f"account_section_{item_label}",
+                    ):
+                        st.session_state["account_section"] = item_label
+                        st.rerun()
+            st.write("")
+            st.markdown('<div class="account-signout">', unsafe_allow_html=True)
+            if st.button("Sign out", icon=":material/logout:", use_container_width=True, key="account_page_sign_out"):
+                sign_out()
+                st.session_state.pop("selected_property_id", None)
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        with detail_col:
+            with st.container(key="account_detail", border=True):
+                if section == "Profile":
+                    st.markdown('<div class="account-detail-label">Profile</div>', unsafe_allow_html=True)
+                    st.subheader("Your StayWise profile")
+                    st.markdown(
+                        f'<div class="account-info-row"><span>Name</span><strong>{escape(display_name)}</strong></div>'
+                        f'<div class="account-info-row"><span>Email</span><strong>{escape(auth_user.get("email", ""))}</strong></div>'
+                        '<div class="account-info-row"><span>Connected with</span><strong>Google</strong></div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown('<div class="account-secure-note">Your StayWise account is connected to your Google identity.</div>', unsafe_allow_html=True)
+                elif section == "Rental portfolio":
+                    st.markdown('<div class="account-detail-label">Your workspace</div>', unsafe_allow_html=True)
+                    st.subheader("Rental portfolio")
+                    portfolio_metrics = st.columns(3)
+                    portfolio_metrics[0].metric("Rentals", len(properties))
+                    portfolio_metrics[1].metric("Bookings", len(reservations))
+                    portfolio_metrics[2].metric("Comparables", len(comps))
+                    st.caption("Your rental records are stored in your private Supabase account.")
+                    for rental in properties:
+                        st.markdown(f"**{escape(rental['name'])}**  ·  {escape(rental.get('area') or 'Location not set')}")
+                elif section == "Sign-in & security":
+                    st.markdown('<div class="account-detail-label">Account access</div>', unsafe_allow_html=True)
+                    st.subheader("Sign-in & security")
+                    st.markdown(
+                        '<div class="account-info-row"><span>Sign-in provider</span><strong>Google</strong></div>'
+                        '<div class="account-info-row"><span>StayWise password</span><strong>Not stored</strong></div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown('<div class="account-secure-note">Google verifies your identity. StayWise never receives or stores your Google password. Manage password and two-step verification in your Google account.</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown('<div class="account-detail-label">Your information</div>', unsafe_allow_html=True)
+                    st.subheader("Privacy & data")
+                    st.write("Your profile, rentals, bookings, guest contact details, blocked dates, and comparisons belong to your signed-in account.")
+                    st.markdown(
+                        '<div class="account-info-row"><span>Portfolio database</span><strong>Supabase PostgreSQL</strong></div>'
+                        '<div class="account-info-row"><span>Account separation</span><strong>Private per user</strong></div>'
+                        '<div class="account-info-row"><span>Google password shared with StayWise</span><strong>No</strong></div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown('<div class="account-secure-note">Signing out ends this browser session. It does not delete your saved rental data.</div>', unsafe_allow_html=True)
     else:
+        st.markdown('<div class="eyebrow">Your account</div>', unsafe_allow_html=True)
+        st.title("Account & privacy")
         st.write("Sign in with your Google account to keep a private portfolio that follows you between devices. The public walkthrough remains available without signing in.")
         if auth_is_configured():
-            if st.button("Continue with Google", type="primary"):
+            if st.button("Continue with Google", type="primary", icon=":material/account_circle:"):
                 sign_in()
         else:
             st.warning("Google sign-in is not configured for this deployment yet.")
