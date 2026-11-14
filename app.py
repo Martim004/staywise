@@ -185,7 +185,7 @@ def booked_revenue_by_day(items: list[dict], start: date, end_exclusive: date) -
 
 
 def revenue_chart_svg(values: dict[date, float], description: str) -> str:
-    """Render a responsive, tooltip-enabled SVG bar chart for the revenue dashboard."""
+    """Render a responsive, tooltip-enabled SVG area chart for the revenue dashboard."""
     entries = sorted(values.items())
     if not entries:
         return '<div class="revenue-empty">No revenue is recorded for this period yet.</div>'
@@ -195,10 +195,9 @@ def revenue_chart_svg(values: dict[date, float], description: str) -> str:
     max_value = max((amount for _, amount in entries), default=0.0)
     upper = max(1.0, max_value * 1.18)
     step = plot_width / len(entries)
-    bar_width = max(3.0, min(34.0, step * 0.62))
     parts = [
         f'<svg class="revenue-chart-svg" viewBox="0 0 {width} {height}" role="img" aria-label="{escape(description, quote=True)}" xmlns="http://www.w3.org/2000/svg">',
-        '<defs><linearGradient id="staywiseRevenueBar" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#41a695"/><stop offset="100%" stop-color="#1d7a78"/></linearGradient></defs>',
+        '<defs><linearGradient id="staywiseRevenueArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#41a695" stop-opacity=".34"/><stop offset="100%" stop-color="#41a695" stop-opacity=".025"/></linearGradient></defs>',
     ]
     for tick in range(5):
         value = upper * (4 - tick) / 4
@@ -206,16 +205,37 @@ def revenue_chart_svg(values: dict[date, float], description: str) -> str:
         parts.append(f'<line x1="{left}" y1="{y:.1f}" x2="{width-right}" y2="{y:.1f}" stroke="#e8eef0" stroke-width="1"/>')
         parts.append(f'<text x="{left-10}" y="{y+4:.1f}" text-anchor="end" fill="#82919a" font-size="12" font-family="DM Sans, sans-serif">€{value:,.0f}</text>')
     label_step = max(1, math.ceil(len(entries) / 7))
+    points = []
     for index, (day, amount) in enumerate(entries):
-        x = left + index * step + (step - bar_width) / 2
-        bar_height = max(2.0, amount / upper * plot_height) if amount > 0 else 0
-        y = top + plot_height - bar_height
-        title = escape(f"{day.strftime('%A, %d %B %Y')}: {money(amount)}")
-        if amount > 0:
-            parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_width:.1f}" height="{bar_height:.1f}" rx="5" fill="url(#staywiseRevenueBar)"><title>{title}</title></rect>')
+        x = left + index * step + step / 2
+        y = top + plot_height - amount / upper * plot_height
+        points.append((x, y, day, amount))
         if index % label_step == 0 or index == len(entries) - 1:
             label = escape(day.strftime("%b %d") if len(entries) > 7 else day.strftime("%d"))
-            parts.append(f'<text x="{left + index * step + step/2:.1f}" y="{height-13}" text-anchor="middle" fill="#82919a" font-size="12" font-family="DM Sans, sans-serif">{label}</text>')
+            parts.append(f'<text x="{x:.1f}" y="{height-13}" text-anchor="middle" fill="#82919a" font-size="12" font-family="DM Sans, sans-serif">{label}</text>')
+
+    if points:
+        baseline = top + plot_height
+        line_path = f'M {points[0][0]:.1f} {points[0][1]:.1f}'
+        for index in range(len(points) - 1):
+            x1, y1 = points[index][0], points[index][1]
+            x2, y2 = points[index + 1][0], points[index + 1][1]
+            previous_y = points[index - 1][1] if index else y1
+            next_y = points[index + 2][1] if index + 2 < len(points) else y2
+            dx = x2 - x1
+            control1_y = y1 + (y2 - previous_y) / 6
+            control2_y = y2 - (next_y - y1) / 6
+            low, high = sorted((y1, y2))
+            control1_y = min(high, max(low, control1_y))
+            control2_y = min(high, max(low, control2_y))
+            line_path += f' C {x1 + dx/3:.1f} {control1_y:.1f}, {x1 + dx*2/3:.1f} {control2_y:.1f}, {x2:.1f} {y2:.1f}'
+        area_path = f'{line_path} L {points[-1][0]:.1f} {baseline:.1f} L {points[0][0]:.1f} {baseline:.1f} Z'
+        parts.append(f'<path d="{area_path}" fill="url(#staywiseRevenueArea)"/>')
+        parts.append(f'<path d="{line_path}" fill="none" stroke="#1d7a78" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>')
+        for x, y, day, amount in points:
+            title = escape(f"{day.strftime('%A, %d %B %Y')}: {money(amount)}")
+            parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="8" fill="transparent"><title>{title}</title></circle>')
+            parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.5" fill="#fff" stroke="#1d7a78" stroke-width="2" pointer-events="none"/>')
     parts.append('</svg>')
     return ''.join(parts)
 
@@ -675,7 +695,7 @@ elif page == "Revenue":
         chart_values = {start + timedelta(days=offset): period_values.get(start + timedelta(days=offset), 0.0)
                         for offset in range((end - start).days)}
         chart_title = "Your month, night by night"
-        chart_note = "Each bar represents gross revenue from one booked night"
+        chart_note = "Each point shows gross revenue from one calendar night"
     else:
         start = date(today.year, 1, 1)
         end = today + timedelta(days=1)
@@ -729,7 +749,7 @@ elif page == "Revenue":
 
     st.markdown(
         f'<section class="revenue-chart-card"><div class="revenue-chart-title">{escape(chart_title)}</div>'
-        f'<div class="revenue-chart-subtitle">{escape(chart_note)} · hover a bar for its exact amount</div>'
+        f'<div class="revenue-chart-subtitle">{escape(chart_note)} · hover a point for its exact amount</div>'
         f'{revenue_chart_svg(chart_values, chart_title)}</section>',
         unsafe_allow_html=True,
     )
