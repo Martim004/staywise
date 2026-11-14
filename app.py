@@ -37,6 +37,22 @@ div[data-testid="stMetricLabel"] {color:#526676;}
 .eyebrow {text-transform:uppercase;letter-spacing:1.5px;font-size:11px;font-weight:700;color:#1D7A78;margin-bottom:4px;}
 .subtle {color:#657987;font-size:14px;}
 div[data-testid="stForm"] {background:white;padding:18px;border:1px solid #E3EAED;border-radius:14px;}
+.revenue-hero {position:relative;overflow:hidden;background:radial-gradient(circle at 88% 16%,#4b9c8c 0,transparent 28%),linear-gradient(120deg,#17324D,#145F5D);color:#fff;border-radius:24px;padding:28px 32px;margin:10px 0 18px;box-shadow:0 14px 34px #17324d20;}
+.revenue-hero:after {content:'';position:absolute;width:210px;height:210px;border:1px solid #ffffff26;border-radius:50%;right:8%;top:-118px;box-shadow:0 0 0 28px #ffffff09,0 0 0 58px #ffffff07;pointer-events:none;}
+.revenue-hero-label {font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#c4e6dc;}
+.revenue-hero-value {font-family:Manrope,sans-serif;font-size:42px;font-weight:800;letter-spacing:-1.5px;line-height:1.2;margin:8px 0 2px;}
+.revenue-hero-note {font-size:14px;color:#d3e6e3;}
+.revenue-hero-badge {display:inline-block;padding:7px 11px;border-radius:999px;background:#ffffff18;border:1px solid #ffffff28;font-size:12px;color:#effaf6;margin-top:16px;}
+.revenue-kpi {height:100%;min-height:112px;background:#fff;border:1px solid #e3eaed;border-radius:18px;padding:18px 20px;box-shadow:0 6px 20px #17324d08;}
+.revenue-kpi-label {font-size:13px;font-weight:600;color:#657987;}
+.revenue-kpi-value {font-family:Manrope,sans-serif;font-size:26px;font-weight:800;letter-spacing:-.5px;color:#17324d;margin-top:9px;}
+.revenue-kpi-note {font-size:12px;color:#82919a;margin-top:3px;}
+.revenue-chart-card {background:#fff;border:1px solid #e3eaed;border-radius:20px;padding:20px 22px 10px;box-shadow:0 6px 20px #17324d08;margin-top:18px;}
+.revenue-chart-title {font-family:Manrope,sans-serif;font-size:17px;font-weight:700;color:#17324d;margin-bottom:2px;}
+.revenue-chart-subtitle {font-size:12px;color:#82919a;margin-bottom:12px;}
+.revenue-chart-svg {display:block;width:100%;height:auto;}
+.revenue-section-title {font-family:Manrope,sans-serif;font-size:17px;font-weight:700;color:#17324d;margin:22px 0 4px;}
+.revenue-empty {background:#fff;border:1px dashed #cbd8dc;border-radius:16px;padding:22px;color:#657987;text-align:center;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -166,6 +182,42 @@ def booked_revenue_by_day(items: list[dict], start: date, end_exclusive: date) -
             totals[night] = totals.get(night, 0.0) + float(item["nightly_rate"])
             night += timedelta(days=1)
     return totals
+
+
+def revenue_chart_svg(values: dict[date, float], description: str) -> str:
+    """Render a responsive, tooltip-enabled SVG bar chart for the revenue dashboard."""
+    entries = sorted(values.items())
+    if not entries:
+        return '<div class="revenue-empty">No revenue is recorded for this period yet.</div>'
+    width, height = 1000, 300
+    left, right, top, bottom = 68, 24, 24, 48
+    plot_width, plot_height = width - left - right, height - top - bottom
+    max_value = max((amount for _, amount in entries), default=0.0)
+    upper = max(1.0, max_value * 1.18)
+    step = plot_width / len(entries)
+    bar_width = max(3.0, min(34.0, step * 0.62))
+    parts = [
+        f'<svg class="revenue-chart-svg" viewBox="0 0 {width} {height}" role="img" aria-label="{escape(description, quote=True)}" xmlns="http://www.w3.org/2000/svg">',
+        '<defs><linearGradient id="staywiseRevenueBar" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#41a695"/><stop offset="100%" stop-color="#1d7a78"/></linearGradient></defs>',
+    ]
+    for tick in range(5):
+        value = upper * (4 - tick) / 4
+        y = top + plot_height * tick / 4
+        parts.append(f'<line x1="{left}" y1="{y:.1f}" x2="{width-right}" y2="{y:.1f}" stroke="#e8eef0" stroke-width="1"/>')
+        parts.append(f'<text x="{left-10}" y="{y+4:.1f}" text-anchor="end" fill="#82919a" font-size="12" font-family="DM Sans, sans-serif">€{value:,.0f}</text>')
+    label_step = max(1, math.ceil(len(entries) / 7))
+    for index, (day, amount) in enumerate(entries):
+        x = left + index * step + (step - bar_width) / 2
+        bar_height = max(2.0, amount / upper * plot_height) if amount > 0 else 0
+        y = top + plot_height - bar_height
+        title = escape(f"{day.strftime('%A, %d %B %Y')}: {money(amount)}")
+        if amount > 0:
+            parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_width:.1f}" height="{bar_height:.1f}" rx="5" fill="url(#staywiseRevenueBar)"><title>{title}</title></rect>')
+        if index % label_step == 0 or index == len(entries) - 1:
+            label = escape(day.strftime("%b %d") if len(entries) > 7 else day.strftime("%d"))
+            parts.append(f'<text x="{left + index * step + step/2:.1f}" y="{height-13}" text-anchor="middle" fill="#82919a" font-size="12" font-family="DM Sans, sans-serif">{label}</text>')
+    parts.append('</svg>')
+    return ''.join(parts)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -596,41 +648,98 @@ elif page == "Market":
 elif page == "Revenue":
     st.markdown('<div class="eyebrow">Recorded stay income</div>', unsafe_allow_html=True)
     st.title("Revenue")
-    st.markdown('<p class="subtle">Gross nightly revenue from confirmed or completed stays for the selected property. Cancelled stays and future nights are excluded from year-to-date totals.</p>', unsafe_allow_html=True)
-    revenue_tabs = st.tabs(["Daily", "Monthly", "Year to date"])
-    with revenue_tabs[0]:
-        revenue_day = st.date_input("Revenue date", value=date.today(), key="revenue_day")
-        daily = booked_revenue_by_day(reservations, revenue_day, revenue_day + timedelta(days=1))
-        gross = daily.get(revenue_day, 0.0)
-        day_bookings = [r for r in reservations if r["status"] in {"confirmed","completed"} and
-                        date.fromisoformat(r["checkin"]) <= revenue_day < date.fromisoformat(r["checkout"])]
-        c1,c2 = st.columns(2)
-        c1.metric("Recorded gross revenue", money(gross))
-        c2.metric("Booked nights", len(day_bookings))
-        if day_bookings:
-            st.dataframe(pd.DataFrame([{"Guest":r["guest_name"],"Source":r["source"],"Nightly revenue":float(r["nightly_rate"])} for r in day_bookings]), width="stretch", hide_index=True)
-        else:
-            st.info("No active stay is recorded for this date.")
-    with revenue_tabs[1]:
-        revenue_month = st.date_input("Choose a month", value=date.today().replace(day=1), key="revenue_month")
-        month_start = revenue_month.replace(day=1)
-        next_month = date(month_start.year + (month_start.month == 12), month_start.month % 12 + 1, 1)
-        monthly = booked_revenue_by_day(reservations, month_start, next_month)
-        c1,c2 = st.columns(2)
-        c1.metric("Monthly gross revenue", money(sum(monthly.values())))
-        c2.metric("Booked nights", len(monthly))
-        daily_frame = pd.DataFrame([{"Date":day,"Gross revenue (€)":monthly.get(day,0.0)} for day in (month_start + timedelta(days=i) for i in range((next_month-month_start).days))]).set_index("Date")
-        st.bar_chart(daily_frame, height=280, color="#1D7A78")
-    with revenue_tabs[2]:
-        today = date.today()
-        ytd = booked_revenue_by_day(reservations, date(today.year,1,1), today + timedelta(days=1))
-        c1,c2,c3 = st.columns(3)
-        c1.metric(f"{today.year} gross to date", money(sum(ytd.values())))
-        c2.metric("Nights stayed / in progress", len(ytd))
-        c3.metric("Daily average to date", money(sum(ytd.values()) / max(1, (today - date(today.year,1,1)).days + 1)))
-        monthly_ytd = pd.DataFrame([{"Month":calendar.month_abbr[m],"Gross revenue (€)":sum(value for day,value in ytd.items() if day.month == m)} for m in range(1,today.month+1)]).set_index("Month")
-        st.bar_chart(monthly_ytd, height=280, color="#1D7A78")
-        st.caption("This is booked gross revenue from nightly rates. It does not estimate unbooked dates or subtract fees, costs, or taxes.")
+    st.markdown('<p class="subtle">A clear view of recorded stay income, with cancelled bookings and future nights left out.</p>', unsafe_allow_html=True)
+
+    control_left, control_right = st.columns([1.25, 1], vertical_alignment="bottom")
+    with control_left:
+        period = st.segmented_control("Revenue period", ["Daily", "Monthly", "Year to date"],
+                                      default="Monthly", label_visibility="collapsed", key="revenue_period")
+    today = date.today()
+    if period == "Daily":
+        with control_right:
+            selected_day = st.date_input("Choose a day", value=today, key="revenue_day")
+        start, end = selected_day, selected_day + timedelta(days=1)
+        period_label = selected_day.strftime("%A, %d %B %Y")
+        period_values = booked_revenue_by_day(reservations, start, end)
+        chart_start, chart_end = selected_day - timedelta(days=6), selected_day + timedelta(days=1)
+        chart_values = booked_revenue_by_day(reservations, chart_start, chart_end)
+        chart_title = "A little context around your day"
+        chart_note = "Daily gross across the 7 days ending on your selected date"
+    elif period == "Monthly":
+        with control_right:
+            selected_month = st.date_input("Choose a month", value=today.replace(day=1), key="revenue_month")
+        start = selected_month.replace(day=1)
+        end = date(start.year + (start.month == 12), start.month % 12 + 1, 1)
+        period_label = start.strftime("%B %Y")
+        period_values = booked_revenue_by_day(reservations, start, end)
+        chart_values = {start + timedelta(days=offset): period_values.get(start + timedelta(days=offset), 0.0)
+                        for offset in range((end - start).days)}
+        chart_title = "Your month, night by night"
+        chart_note = "Each bar represents gross revenue from one booked night"
+    else:
+        start = date(today.year, 1, 1)
+        end = today + timedelta(days=1)
+        period_label = f"January – {today.strftime('%B %Y')}"
+        period_values = booked_revenue_by_day(reservations, start, end)
+        chart_values = {
+            date(today.year, month, 1): sum(value for day, value in period_values.items() if day.month == month)
+            for month in range(1, today.month + 1)
+        }
+        chart_title = "The year so far"
+        chart_note = "Monthly gross revenue from January through today"
+
+    gross = sum(period_values.values())
+    booked_nights = len(period_values)
+    average_rate = gross / booked_nights if booked_nights else 0.0
+    active_bookings = []
+    detail_rows = []
+    for reservation in reservations:
+        if reservation["status"] not in {"confirmed", "completed"}:
+            continue
+        checkin = date.fromisoformat(reservation["checkin"])
+        checkout = date.fromisoformat(reservation["checkout"])
+        clipped_start, clipped_end = max(checkin, start), min(checkout, end)
+        nights = max(0, (clipped_end - clipped_start).days)
+        if nights <= 0:
+            continue
+        active_bookings.append(reservation)
+        detail_rows.append({
+            "Stay": f"{checkin:%d %b} – {checkout:%d %b}",
+            "Guest": reservation["guest_name"],
+            "Channel": reservation["source"],
+            "Nights": nights,
+            "Nightly rate": money(float(reservation["nightly_rate"])),
+            "Revenue in period": money(nights * float(reservation["nightly_rate"])),
+            "Status": reservation["status"].title(),
+        })
+
+    property_label = escape(active_property["name"])
+    st.markdown(
+        f'<section class="revenue-hero"><div class="revenue-hero-label">Gross income · {escape(period_label)}</div>'
+        f'<div class="revenue-hero-value">{money(gross)}</div>'
+        f'<div class="revenue-hero-note">Recorded nightly revenue for {property_label}</div>'
+        f'<span class="revenue-hero-badge">{len(active_bookings)} active stay{"s" if len(active_bookings) != 1 else ""} in this period</span></section>',
+        unsafe_allow_html=True,
+    )
+
+    k1, k2, k3 = st.columns(3)
+    k1.markdown(f'<div class="revenue-kpi"><div class="revenue-kpi-label">Booked nights</div><div class="revenue-kpi-value">{booked_nights}</div><div class="revenue-kpi-note">Confirmed or completed stays</div></div>', unsafe_allow_html=True)
+    k2.markdown(f'<div class="revenue-kpi"><div class="revenue-kpi-label">Average nightly rate</div><div class="revenue-kpi-value">{money(average_rate)}</div><div class="revenue-kpi-note">Gross income per booked night</div></div>', unsafe_allow_html=True)
+    k3.markdown(f'<div class="revenue-kpi"><div class="revenue-kpi-label">Period</div><div class="revenue-kpi-value">{escape(period_label)}</div><div class="revenue-kpi-note">Revenue is shown in EUR</div></div>', unsafe_allow_html=True)
+
+    st.markdown(
+        f'<section class="revenue-chart-card"><div class="revenue-chart-title">{escape(chart_title)}</div>'
+        f'<div class="revenue-chart-subtitle">{escape(chart_note)} · hover a bar for its exact amount</div>'
+        f'{revenue_chart_svg(chart_values, chart_title)}</section>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<div class="revenue-section-title">Stay details</div>', unsafe_allow_html=True)
+    if detail_rows:
+        st.dataframe(pd.DataFrame(detail_rows), width="stretch", hide_index=True)
+    else:
+        st.markdown('<div class="revenue-empty">No confirmed or completed stays are recorded for this period.</div>', unsafe_allow_html=True)
+    st.caption("Gross nightly income only. Future nights, cancellations, platform fees, operating costs, and taxes are excluded.")
     st.divider()
     st.subheader("Download revenue workbook")
     st.caption("An Excel workbook with a KPI dashboard and chart, monthly summary, daily revenue ledger, and reservation details for the current year to date.")
