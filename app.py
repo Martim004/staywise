@@ -12,11 +12,12 @@ from folium.plugins import MarkerCluster
 from streamlit_folium import st_folium
 
 from staywise.calculations import competitor_summary, date_ranges_overlap, validate_reservation
+from staywise.auth import auth_is_configured, current_user, sign_in, sign_out
 from staywise.database import (add_blocked_dates, add_comparable, add_property, add_reservation,
                                delete_blocked_dates, delete_comparable, delete_property, delete_reservation,
                                get_blocked_dates, get_comparables,
                                get_properties, get_reservations, get_settings, init_db, is_demo_mode,
-                               update_property,
+                               save_user_profile, set_authenticated_user, update_property,
                                set_comparable_selected)
 from staywise.imports import export_csv, parse_booking_csv, template_csv
 from staywise.inside_airbnb import LISBON_LISTINGS_URL, SOURCE_PAGE, listings_within_radius
@@ -123,26 +124,48 @@ def ensure_public_demo_example() -> None:
             })
 
 
-init_db()
-READ_ONLY = is_demo_mode()
-if READ_ONLY:
+auth_user = current_user() if auth_is_configured() else None
+set_authenticated_user(auth_user["id"] if auth_user else None)
+public_demo = is_demo_mode() and auth_user is None
+if auth_is_configured() and not auth_user and not is_demo_mode():
+    st.markdown('<div class="brand">StayWise<span style="color:#1D7A78">.</span></div>', unsafe_allow_html=True)
+    st.title("Sign in to StayWise")
+    st.write("Your rental portfolio is private to your account. Continue with Google to open it.")
+    if st.button("Continue with Google", type="primary"):
+        sign_in()
+    st.stop()
+
+try:
+    init_db()
+    if auth_user:
+        save_user_profile(auth_user)
+except Exception as exc:
+    st.error("StayWise could not open its private Supabase data store. Check the Supabase database settings and apply the account migration.")
+    st.caption(f"Details: {type(exc).__name__}")
+    st.stop()
+
+READ_ONLY = public_demo
+if public_demo:
     ensure_public_demo_example()
 
 settings = get_settings()
 properties = get_properties()
 if "pending_property_id" in st.session_state:
     st.session_state["selected_property_id"] = st.session_state.pop("pending_property_id")
-if is_demo_mode() and not st.session_state.get("demo_sample_defaulted"):
+if public_demo and not st.session_state.get("demo_sample_defaulted"):
     demo_home = next((p for p in properties if p["name"] == DEMO_PROPERTY_NAME), None)
     if demo_home:
         st.session_state["selected_property_id"] = demo_home["id"]
         st.session_state["demo_sample_defaulted"] = True
 
-if is_demo_mode() and not properties:
+if not properties:
     st.markdown('<div class="brand">StayWise<span style="color:#1D7A78">.</span></div>', unsafe_allow_html=True)
     st.markdown('<div class="eyebrow">Portfolio setup</div>', unsafe_allow_html=True)
     st.title("Add your first rental")
-    st.markdown('<p class="subtle">Start with a property profile, then explore its calendar, market map, and revenue workspace. This public walkthrough keeps fictional property details in your browser session only. Guest records stay disabled.</p>', unsafe_allow_html=True)
+    intro = ("Start with a property profile, then explore its calendar, market map, and revenue workspace. "
+             "This public walkthrough keeps fictional details in your browser session; guest records stay disabled." if public_demo
+             else "Create your first rental profile to start a private portfolio. Your data is saved in your Supabase account.")
+    st.markdown(f'<p class="subtle">{intro}</p>', unsafe_allow_html=True)
     with st.form("first_demo_property", clear_on_submit=True):
         p1, p2, p3 = st.columns(3)
         new_name = p1.text_input("Property name *", placeholder="e.g. Lisbon City Apartment")
@@ -249,7 +272,7 @@ with st.sidebar:
     st.markdown('<div class="brand">StayWise<span style="color:#1D7A78">.</span></div>', unsafe_allow_html=True)
     st.caption("Short-stay rental studio")
     st.divider()
-    page = st.radio("Workspace", ["Overview", "Bookings", "Calendar", "Market", "Revenue"], label_visibility="collapsed")
+    page = st.radio("Workspace", ["Overview", "Bookings", "Calendar", "Market", "Revenue", "Account"], label_visibility="collapsed")
     property_ids = [p["id"] for p in properties]
     if st.session_state.get("selected_property_id") not in property_ids:
         demo_home = next((p for p in properties if p["name"] == DEMO_PROPERTY_NAME), None)
@@ -261,8 +284,10 @@ with st.sidebar:
     active_property = next(p for p in properties if p["id"] == active_property_id)
     st.markdown(f"**{active_property['name']}**")
     st.caption(active_property.get("area") or "Add a location in property settings")
-    if is_demo_mode():
+    if public_demo:
         st.info("Public walkthrough · session-only fictional details · guest records disabled", icon="🧪")
+    elif auth_user:
+        st.caption(f"Private Supabase account · {auth_user['email']}")
     else:
         st.caption("Private local database")
     st.caption("EUR · English")
@@ -278,7 +303,33 @@ if READ_ONLY:
     st.warning("Public walkthrough: property profiles stay in this browser session. Use fictional property details only. Guest records, CSV uploads, and booking edits are disabled.", icon="🔒")
 
 
-if page == "Overview":
+if page == "Account":
+    st.markdown('<div class="eyebrow">Your account</div>', unsafe_allow_html=True)
+    st.title("Account & privacy")
+    if auth_user:
+        st.success("Signed in with Google")
+        profile_left, profile_right = st.columns(2)
+        profile_left.metric("Email", auth_user["email"] or "Connected Google account")
+        profile_right.metric("Portfolio storage", "Private Supabase database")
+        if auth_user.get("name"):
+            st.write(f"**Name:** {auth_user['name']}")
+        st.caption("Your property profiles, bookings, guest contact details, blocked dates, comparables, and settings are isolated to your Google account. StayWise does not store your Google password or OAuth client secret.")
+        st.info("The Google account manages your sign-in. Use Google account security settings to change its password or enable two-step verification.")
+        if st.button("Sign out", type="secondary"):
+            sign_out()
+            st.session_state.pop("selected_property_id", None)
+            st.rerun()
+    else:
+        st.write("Sign in with your Google account to keep a private portfolio that follows you between devices. The public walkthrough remains available without signing in.")
+        if auth_is_configured():
+            if st.button("Continue with Google", type="primary"):
+                sign_in()
+        else:
+            st.warning("Google sign-in is not configured for this deployment yet.")
+            st.markdown("Configure Google OIDC in Streamlit Community Cloud Secrets and set `SUPABASE_DATABASE_URL` to your Supabase Postgres connection string. The setup steps are in the README.")
+
+
+elif page == "Overview":
     st.markdown('<div class="eyebrow">Your rental at a glance</div>', unsafe_allow_html=True)
     st.title(f"{settings.get('property_name','My Rental')} overview")
     st.markdown('<p class="subtle">Your rental calendar and local market context in one calm workspace.</p>', unsafe_allow_html=True)
