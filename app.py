@@ -74,7 +74,7 @@ div[data-testid="stForm"] {background:white;padding:18px;border:1px solid #E3EAE
 .account-info-row {display:flex;justify-content:space-between;gap:20px;padding:14px 0;border-bottom:1px solid #edf1f2;color:#526676;}
 .account-info-row strong {color:#17324d;text-align:right;overflow-wrap:anywhere;}
 .account-secure-note {border-radius:14px;background:#edf6f2;padding:16px 18px;color:#315f55;margin-top:18px;}
-.st-key-staywise_chat_launcher {position:fixed!important;right:20px!important;bottom:20px!important;left:auto!important;top:auto!important;width:58px!important;min-width:58px!important;max-width:58px!important;height:58px!important;z-index:99999!important;overflow:visible!important;display:flex!important;align-items:center!important;justify-content:center!important;}
+.st-key-staywise_chat_launcher {position:fixed!important;right:20px!important;bottom:80px!important;left:auto!important;top:auto!important;width:58px!important;min-width:58px!important;max-width:58px!important;height:58px!important;z-index:99999!important;overflow:visible!important;display:flex!important;align-items:center!important;justify-content:center!important;}
 .st-key-staywise_chat_launcher [data-testid="stPopover"] {width:58px!important;min-width:58px!important;}
 .st-key-staywise_chat_launcher button[data-testid="stPopoverButton"] {width:58px!important;min-width:58px!important;height:58px!important;border-radius:50%!important;background:#17324d!important;color:#fff!important;border:2px solid white!important;box-shadow:0 8px 24px #17324d44!important;padding:0!important;}
 .st-key-staywise_chat_launcher button[data-testid="stPopoverButton"]:hover {background:#1d7a78!important;color:#fff!important;border-color:#fff!important;}
