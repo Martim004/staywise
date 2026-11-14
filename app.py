@@ -145,7 +145,7 @@ except Exception as exc:
     st.stop()
 
 READ_ONLY = public_demo
-if public_demo or (auth_user and not get_properties()):
+if public_demo or auth_user:
     # Keep the fictional Campo de Ourique example available in every new private portfolio.
     ensure_public_demo_example()
 
