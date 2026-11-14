@@ -43,8 +43,20 @@ python -m unittest discover -s tests
 - Revenue views for a chosen night, a chosen month, and current-year-to-date. Revenue is actual booked gross nightly revenue, not a projection.
 - Revenue Excel workbook with a KPI dashboard and chart, monthly summary, daily ledger, and reservation detail.
 - Fictional Campo de Ourique sample home, bookings, blocked dates, and comparisons for hands-on demos, isolated by visitor session.
+- PostgreSQL snapshot storage for the full Inside Airbnb Lisbon detailed listings file. Only the latest city snapshot is retained; the CSV's original columns are kept in JSONB.
 
 The Inside Airbnb public snapshot is downloaded on request and cached for 24 hours. Prices are observations from that snapshot, not live booking quotes. Comparisons use straight-line distance and should be interpreted as market context, not an exact price prediction. Airbnb and Booking.com links open the owner's listing page; StayWise does not currently connect accounts or sync reservations directly. Airbnb API-connected software access and Booking.com connectivity require approved partner / property connections. Source: [Inside Airbnb data](https://insideairbnb.com/pt/get-the-data/).
+
+When a PostgreSQL URL is configured, **Load / refresh Airbnb comparables** saves the complete Lisbon `listings.csv.gz` snapshot to PostgreSQL before filtering it for the selected home. Calendar and review files are not imported in this feature. StayWise estimates the next database footprint with a safety margin: below 500 MiB it selects Supabase; at or above that threshold it selects Layerbase. It reports the actual PostgreSQL database size after saving. The most recent snapshot replaces the prior listing snapshot for that city to keep storage bounded.
+
+For the Streamlit Cloud app, add database connection strings under **Manage app → Settings → Secrets**. Supply a Supabase connection URL, and a Layerbase URL as the size fallback:
+
+```toml
+SUPABASE_DATABASE_URL = "postgresql://..."
+LAYERBASE_DATABASE_URL = "postgresql://..."
+```
+
+Use the connection URL from each provider's dashboard and keep these credentials out of GitHub and chat. Supabase documents the **Session pooler** for long-running backends that need IPv4-compatible access; the exact endpoint and username are shown in its dashboard. If no database URL is configured, the Market page still works but keeps the snapshot only in the app session.
 
 Revenue forecasting, expected-revenue summaries, and PDF reports are not included. The revenue workbook contains recorded revenue only.
 
