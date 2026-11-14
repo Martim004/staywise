@@ -97,7 +97,7 @@ begin
     if table_name = 'staywise_profiles' then
       execute 'grant select, insert, update, delete on public.staywise_profiles to authenticated';
       execute 'create policy staywise_profiles_owner_access on public.staywise_profiles for all to authenticated using ((select auth.jwt() ->> ''sub'') = user_id) with check ((select auth.jwt() ->> ''sub'') = user_id)';
-    elsif table_name in array array['staywise_reservations', 'staywise_blocked_dates', 'staywise_comparables'] then
+    elsif table_name in ('staywise_reservations', 'staywise_blocked_dates', 'staywise_comparables') then
       check_expression := '(select auth.jwt() ->> ''sub'') = owner_id AND EXISTS (SELECT 1 FROM public.staywise_properties p WHERE p.id = property_id)';
     else
       check_expression := '(select auth.jwt() ->> ''sub'') = owner_id';
