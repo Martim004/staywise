@@ -35,6 +35,7 @@ python -m unittest discover -s tests
 
 - Reservation records with guest details, stay dates, source, and status; CSV import and export.
 - A multi-property portfolio with property-specific reservations, blocked dates, comparables, map coordinates, and Airbnb / Booking.com listing links.
+- Google sign-in and an account page; signed-in portfolios are stored in Supabase Postgres and separated with PostgreSQL Row Level Security (RLS).
 - Add or remove rentals from the portfolio; removing a rental also removes its linked reservations, guest contacts, blocked dates, and comparisons. The built-in fictional demo home is protected from deletion.
 - Color-coded month calendar showing booked, blocked, and available nights.
 - Lisbon Airbnb market comparisons from the public Inside Airbnb listings snapshot, with a configurable radius, bedroom and capacity filters, price distribution, ratings, reviews, availability, and listing-level details.
@@ -58,6 +59,32 @@ LAYERBASE_DATABASE_URL = "postgresql://..."
 
 Use the connection URL from each provider's dashboard and keep these credentials out of GitHub and chat. Supabase documents the **Session pooler** for long-running backends that need IPv4-compatible access; the exact endpoint and username are shown in its dashboard. If no database URL is configured, the Market page still works but keeps the snapshot only in the app session.
 
+## Google sign-in and private accounts
+
+StayWise uses Streamlit's OpenID Connect handler to verify Google accounts. The Google password is entered only on Google's sign-in page; StayWise never receives or stores it. Streamlit keeps the sign-in session in its protected cookie. Rental data is stored in the configured Supabase Postgres database, with a separate Google subject on every row and RLS policies applied to the account tables. The app uses its server-side database connection only after verifying the Google identity. The Supabase database password and Google OAuth client secret belong only in Streamlit Secrets; never commit them or send them in chat.
+
+One-time setup:
+
+1. In Google Cloud Console, create an OAuth client of type **Web application**. Add the redirect URI `https://staywise-martim004.streamlit.app/oauth2callback` under **Authorized redirect URIs**. For local development also add `http://localhost:8501/oauth2callback`.
+2. Copy the OAuth client ID and client secret into Streamlit Community Cloud **Manage app → Settings → Secrets**. Keep the existing `SUPABASE_DATABASE_URL` connection secret. It must be a server-side Postgres connection string, not the publishable/anon API key.
+3. Add these values to Streamlit Secrets (place `SUPABASE_DATABASE_URL` before the `[auth]` section):
+
+   ```toml
+   SUPABASE_DATABASE_URL = "postgresql://..."
+
+   [auth]
+   redirect_uri = "https://staywise-martim004.streamlit.app/oauth2callback"
+   cookie_secret = "generate a long random value"
+   client_id = "your Google OAuth client ID"
+   client_secret = "your Google OAuth client secret"
+   server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
+   ```
+
+4. On the first signed-in visit, StayWise creates its account tables and RLS policies using `SUPABASE_DATABASE_URL`. The profile, properties, bookings, guest contacts, calendar blocks, comparables, and settings are saved in Supabase. Public demo visitors remain anonymous and see isolated fictional data.
+5. If Google's consent screen is in testing mode, add the intended Google accounts as test users in Google Cloud Console.
+
+For local Google sign-in, create `.streamlit/secrets.toml` with the same `[auth]` values, use the local callback URI above, and set `SUPABASE_DATABASE_URL` to the Supabase connection string. The file is ignored by Git. Existing local SQLite data is kept local; StayWise does not automatically upload guest records during account setup.
+
 Revenue forecasting, expected-revenue summaries, and PDF reports are not included. The revenue workbook contains recorded revenue only.
 
 ## Booking CSV columns
@@ -74,9 +101,11 @@ The demo is deployed from this public GitHub repository on [Streamlit Community 
 
 ```text
 app.py                   Streamlit screens and user workflows
+staywise/auth.py         Verified Google OpenID Connect identity
 staywise/calculations.py Reservation validation and manual market summary
-staywise/database.py     SQLite storage and fictional demo seed data
+staywise/database.py     SQLite demo/local storage and Supabase user data
 staywise/imports.py      CSV template, validation, and export
 staywise/inside_airbnb.py Inside Airbnb filtering and distance calculations
+supabase/migrations/     RLS-protected account data schema
 tests/                   Business-rule, export, and app smoke checks
 ```
