@@ -925,8 +925,16 @@ elif page == "Revenue":
     st.caption("Gross nightly income only. Future nights, cancellations, platform fees, operating costs, and taxes are excluded.")
     st.divider()
     st.subheader("Download revenue workbook")
-    st.caption("An Excel workbook with a KPI dashboard and chart, monthly summary, daily revenue ledger, and reservation details for the current year to date.")
-    workbook = build_revenue_workbook(active_property["name"], date.today().year, reservations, date.today())
+    current_year = date.today().year
+    booking_years = [date.fromisoformat(r["checkin"]).year for r in reservations if r.get("checkin")]
+    first_export_year = min([2024, *booking_years]) if booking_years else 2024
+    export_years = list(range(current_year, first_export_year - 1, -1))
+    export_year = st.selectbox("Revenue year", export_years, key="revenue_export_year")
+    if export_year == current_year:
+        st.caption("An Excel workbook with a KPI dashboard and chart, monthly summary, daily revenue ledger, and reservation details for the selected year to date.")
+    else:
+        st.caption("An Excel workbook with a KPI dashboard and chart, monthly summary, daily revenue ledger, and reservation details for the full selected year.")
+    workbook = build_revenue_workbook(active_property["name"], export_year, reservations, date.today())
     st.download_button("Download revenue Excel workbook", workbook,
-                       f"staywise-revenue-{date.today().year}.xlsx",
+                       f"staywise-revenue-{export_year}.xlsx",
                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
