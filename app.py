@@ -20,6 +20,7 @@ from staywise.database import (add_blocked_dates, add_comparable, add_property, 
                                set_comparable_selected)
 from staywise.imports import export_csv, parse_booking_csv, template_csv
 from staywise.inside_airbnb import LISBON_LISTINGS_URL, SOURCE_PAGE, listings_within_radius
+from staywise.postgres_store import database_urls, load_latest_snapshot, save_latest_snapshot
 from staywise.reports import build_revenue_workbook
 
 
@@ -165,6 +166,11 @@ def booked_revenue_by_day(items: list[dict], start: date, end_exclusive: date) -
             totals[night] = totals.get(night, 0.0) + float(item["nightly_rate"])
             night += timedelta(days=1)
     return totals
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_postgres_snapshot() -> tuple[pd.DataFrame, dict] | None:
+    return load_latest_snapshot()
 
 
 with st.sidebar:
@@ -422,17 +428,46 @@ elif page == "Market":
     load_requested = st.button("Load / refresh Airbnb comparables", type="primary")
     if load_requested:
         st.session_state["inside_airbnb_loaded"] = True
+        st.session_state["inside_airbnb_refresh_requested"] = True
         load_inside_airbnb.clear()
+        load_postgres_snapshot.clear()
     if st.session_state.get("inside_airbnb_loaded"):
         with st.spinner("Loading the latest configured Lisbon snapshot from Inside Airbnb…"):
             try:
-                source_data = load_inside_airbnb(LISBON_LISTINGS_URL)
+                storage_info = None
+                storage_error = None
+                configured_urls = database_urls()
+                refresh_requested = st.session_state.pop("inside_airbnb_refresh_requested", False)
+                saved = None
+                if not refresh_requested and any(configured_urls.values()):
+                    try:
+                        saved = load_postgres_snapshot()
+                    except Exception as exc:
+                        storage_error = str(exc)
+                if saved:
+                    source_data, storage_info = saved
+                else:
+                    source_data = load_inside_airbnb(LISBON_LISTINGS_URL)
+                    if any(configured_urls.values()):
+                        try:
+                            storage_info = save_latest_snapshot(source_data, LISBON_LISTINGS_URL, "Lisbon")
+                            load_postgres_snapshot.clear()
+                        except Exception as exc:
+                            storage_error = str(exc)
                 nearby = listings_within_radius(
                     source_data, float(settings.get("latitude",38.719)), float(settings.get("longitude",-9.165)),
                     radius_km, int(settings.get("bedrooms",2)) if bedrooms_only else None,
                     int(settings.get("capacity",4)) if capacity_match else None,
                 )
                 st.caption(f"Source snapshot: 19 September 2026 · {len(nearby):,} matches · distances are straight-line from your saved coordinates. Prices and availability are source data, not live quotes.")
+                if storage_info:
+                    db_mb = (storage_info.get("database_bytes") or 0) / (1024 ** 2)
+                    payload_mb = storage_info.get("payload_bytes", 0) / (1024 ** 2)
+                    st.success(f"Full Lisbon snapshot saved in {storage_info['provider']} PostgreSQL · {storage_info['listing_count']:,} listings · {payload_mb:.1f} MiB of listing data · database currently {db_mb:.1f} MiB. Only the latest snapshot is retained.")
+                elif storage_error:
+                    st.warning(f"The comparison data loaded for this session, but could not be saved to PostgreSQL: {storage_error}")
+                else:
+                    st.info("The snapshot is currently loaded in this session only. To save it permanently, add SUPABASE_DATABASE_URL to Streamlit Community Cloud Secrets; add LAYERBASE_DATABASE_URL too if the measured database would exceed 500 MiB.")
                 if len(nearby):
                     m1,m2,m3,m4,m5 = st.columns(5)
                     m1.metric("Nearby listings", f"{len(nearby):,}")
