@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import calendar
+import math
 from datetime import date
 from statistics import median
 from typing import Any, Iterable
@@ -34,40 +35,61 @@ def validate_reservation(
         checkin = date.fromisoformat(str(reservation["checkin"]))
         checkout = date.fromisoformat(str(reservation["checkout"]))
         nights_between(checkin, checkout)
+        if checkin.year < 1900 or checkout.year > 2200:
+            errors.append("Dates must be between 1900 and 2200.")
     except (KeyError, TypeError, ValueError):
         return ["Enter valid check-in and check-out dates; check-out must be later."]
 
-    if not str(reservation.get("guest_name", "")).strip():
+    guest_name = str(reservation.get("guest_name", "")).strip()
+    if not guest_name:
         errors.append("Guest name is required.")
+    elif len(guest_name) > 120:
+        errors.append("Guest name must be 120 characters or fewer.")
+    for field, limit, label in (("email", 254, "Email"), ("phone", 40, "Phone"),
+                                ("source", 80, "Source"), ("notes", 2000, "Notes")):
+        if len(str(reservation.get(field, "") or "")) > limit:
+            errors.append(f"{label} must be {limit} characters or fewer.")
+    email = str(reservation.get("email", "") or "").strip()
+    if email and ("@" not in email or email.startswith("@") or email.endswith("@") or any(ch.isspace() for ch in email)):
+        errors.append("Enter a valid email address.")
     try:
-        if int(reservation.get("guests", 0)) < 1:
-            errors.append("Guest count must be at least 1.")
-    except (TypeError, ValueError):
+        guests = int(reservation.get("guests", 0))
+        if guests < 1 or guests > 100:
+            errors.append("Guest count must be between 1 and 100.")
+    except (TypeError, ValueError, OverflowError):
         errors.append("Guest count must be a whole number.")
     try:
-        if float(reservation.get("nightly_rate", 0)) < 0:
-            errors.append("Nightly rate cannot be negative.")
-    except (TypeError, ValueError):
+        rate = float(reservation.get("nightly_rate", 0))
+        if not math.isfinite(rate) or rate < 0 or rate > 1_000_000:
+            errors.append("Nightly rate must be a finite amount between 0 and 1,000,000.")
+    except (TypeError, ValueError, OverflowError):
         errors.append("Nightly rate must be a number.")
-
     status = str(reservation.get("status", "confirmed")).lower()
+    if status not in {"confirmed", "completed", "cancelled"}:
+        errors.append("Status must be confirmed, completed, or cancelled.")
+
     if status in ACTIVE_STATUSES:
         for other in reservations:
             if (exclude_id is not None and other.get("id") == exclude_id) or str(other.get("status", "")).lower() not in ACTIVE_STATUSES:
                 continue
-            other_start = date.fromisoformat(str(other["checkin"]))
-            other_end = date.fromisoformat(str(other["checkout"]))
+            try:
+                other_start = date.fromisoformat(str(other["checkin"]))
+                other_end = date.fromisoformat(str(other["checkout"]))
+            except (KeyError, TypeError, ValueError):
+                continue
             if date_ranges_overlap(checkin, checkout, other_start, other_end):
                 errors.append(f"Dates overlap with reservation #{other.get('id', '?')}.")
                 break
         for block in blocked_dates:
-            block_start = date.fromisoformat(str(block["start_date"]))
-            block_end = date.fromisoformat(str(block["end_date"]))
+            try:
+                block_start = date.fromisoformat(str(block["start_date"]))
+                block_end = date.fromisoformat(str(block["end_date"]))
+            except (KeyError, TypeError, ValueError):
+                continue
             if date_ranges_overlap(checkin, checkout, block_start, block_end):
                 errors.append("Dates overlap with blocked dates.")
                 break
     return errors
-
 
 def _overlap_days(start: date, end: date, year_start: date, year_end: date) -> int:
     left, right = max(start, year_start), min(end, year_end)
