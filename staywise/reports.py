@@ -5,6 +5,7 @@ from __future__ import annotations
 from io import BytesIO
 from typing import Any
 from datetime import date, timedelta
+from xml.sax.saxutils import escape
 
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference
@@ -25,6 +26,19 @@ PALE = "EAF3F2"
 
 def _money(value: float) -> str:
     return f"€{value:,.2f}"
+
+
+def _excel_safe(value: Any) -> Any:
+    """Keep untrusted text literal when opened in spreadsheet software."""
+    if isinstance(value, str):
+        value = value.replace("\\x00", "")
+        if value.lstrip(" \\t\\r\\n").startswith(("=", "+", "-", "@")):
+            return "'" + value
+    return value
+
+
+def _safe_paragraph(value: Any) -> str:
+    return escape(str(value or ""))
 
 
 def build_excel_report(property_name: str, report: dict[str, Any], comparables: list[dict[str, Any]], settings: dict[str, Any]) -> bytes:
@@ -70,6 +84,9 @@ def build_excel_report(property_name: str, report: dict[str, Any], comparables: 
         market.append([c.get("name"),c.get("area"),c.get("bedrooms"),c.get("capacity"),c.get("distance_km"),c.get("nightly_rate"),c.get("observed_date"),c.get("url"),"Yes" if c.get("selected",1) else "No",c.get("notes")])
 
     for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for cell in row:
+                cell.value = _excel_safe(cell.value)
         ws.freeze_panes = "A2"
         ws.sheet_view.showGridLines = False
         ws.auto_filter.ref = ws.dimensions if ws.max_row > 5 else "A1:C1"
@@ -234,7 +251,7 @@ def build_pdf_report(property_name: str, report: dict[str, Any], comparables: li
     styles.add(ParagraphStyle(name="Section", parent=styles["Heading2"], textColor=colors.HexColor("#1D7A78"), fontSize=13, leading=17, spaceBefore=12, spaceAfter=6))
     styles.add(ParagraphStyle(name="Foot", parent=styles["Normal"], textColor=colors.HexColor("#526676"), fontSize=8, leading=11))
     story = [Paragraph("StayWise", styles["BrandTitle"]), Paragraph(f"Annual rental performance | {report['year']}", styles["Subtle"]),
-             Spacer(1, 5*mm), Paragraph(property_name, styles["Heading1"]),
+             Spacer(1, 5*mm), Paragraph(_safe_paragraph(property_name), styles["Heading1"]),
              Paragraph("A clear view of bookings, market observations, and expected revenue.", styles["Subtle"]), Spacer(1, 6*mm)]
 
     kpis = [["Gross revenue", "Estimated net", "Confirmed nights", "Future estimate nights"],
@@ -265,11 +282,11 @@ def build_pdf_report(property_name: str, report: dict[str, Any], comparables: li
     if market.get("median_rate") is None:
         story.append(Paragraph("No comparable listings are selected. Add observations to calculate a benchmark.", styles["Subtle"]))
     else:
-        story.append(Paragraph(f"Selected listings: {market['count']} | Median observed rate: {_money(market['median_rate'])} | Suggested rate after adjustment: {_money(market['suggested_rate'])}.", styles["Normal"]))
+        story.append(Paragraph(_safe_paragraph(f"Selected listings: {market['count']} | Median observed rate: {_money(market['median_rate'])} | Suggested rate after adjustment: {_money(market['suggested_rate'])}."), styles["Normal"]))
     comp_rows = [["Comparable", "Area", "Beds", "Nightly rate", "Observed"]]
     for c in comparables:
         if c.get("selected", 1):
-            comp_rows.append([str(c.get("name",""))[:34],str(c.get("area",""))[:24],str(c.get("bedrooms","")),_money(float(c.get("nightly_rate",0))),str(c.get("observed_date",""))])
+            comp_rows.append([_safe_paragraph(str(c.get("name",""))[:34]),_safe_paragraph(str(c.get("area",""))[:24]),str(c.get("bedrooms","")),_money(float(c.get("nightly_rate",0))),str(c.get("observed_date",""))])
     if len(comp_rows) > 1:
         ct = Table(comp_rows, repeatRows=1, colWidths=[59*mm,41*mm,14*mm,30*mm,29*mm])
         ct.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#EAF3F2")),("TEXTCOLOR",(0,0),(-1,0),colors.HexColor("#17324D")),
@@ -282,7 +299,7 @@ def build_pdf_report(property_name: str, report: dict[str, Any], comparables: li
     details = {r.get("id"):r for r in report.get("reservation_details", [])}
     for r in report["reservations"]:
         d = details.get(r.get("id"), {})
-        booking_rows.append([str(r.get("guest_name",""))[:24], f"{r.get('checkin')} to {r.get('checkout')}", str(d.get("guests","")), _money(r["nightly_rate"]), str(r.get("status","")), str(d.get("email") or d.get("phone") or "")[:26]])
+        booking_rows.append([_safe_paragraph(str(r.get("guest_name",""))[:24]), _safe_paragraph(f"{r.get('checkin')} to {r.get('checkout')}"), str(d.get("guests","")), _money(r["nightly_rate"]), _safe_paragraph(str(r.get("status",""))), _safe_paragraph(str(d.get("email") or d.get("phone") or "")[:26])])
     if len(booking_rows) == 1:
         booking_rows.append(["No confirmed reservations for this year", "", "", "", "", ""])
     bt = Table(booking_rows, repeatRows=1, colWidths=[34*mm,43*mm,15*mm,23*mm,23*mm,35*mm])
