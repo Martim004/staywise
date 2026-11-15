@@ -98,8 +98,12 @@ def _jsonable_record(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def _frame_payload(frame: pd.DataFrame) -> tuple[list[dict[str, Any]], int, str]:
+    if len(frame.index) > 100_000:
+        raise ValueError("The public listing snapshot exceeds the 100,000-row safety limit.")
     records = [_jsonable_record(record) for record in frame.to_dict(orient="records")]
     encoded = json.dumps(records, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
+    if len(encoded) > 100 * 1024 * 1024:
+        raise ValueError("The public listing snapshot exceeds the 100 MiB storage limit.")
     return records, len(encoded), hashlib.sha256(encoded).hexdigest()
 
 
@@ -114,7 +118,7 @@ def _provider_for(projected_payload_bytes: int) -> tuple[str, str, int]:
     else:
         projected = int(projected_payload_bytes * 1.5) + 8_000_000
 
-    if projected_bytes >= SUPABASE_LIMIT_BYTES and layerbase_url:
+    if projected >= SUPABASE_LIMIT_BYTES and layerbase_url:
         return "Layerbase", layerbase_url, projected
     if not supabase_url:
         raise RuntimeError(
@@ -202,7 +206,7 @@ def load_latest_snapshot() -> tuple[pd.DataFrame, dict[str, Any]] | None:
                 metadata["provider"] = provider.capitalize()
                 candidates.append((metadata["downloaded_at"], frame, metadata))
         except Exception as exc:
-            errors.append(f"{provider}: {exc}")
+            errors.append(f"{provider}: database unavailable ({type(exc).__name__})")
     if candidates:
         _, frame, metadata = max(candidates, key=lambda item: item[0])
         return frame, metadata
