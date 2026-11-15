@@ -7,11 +7,15 @@ import sqlite3
 import calendar
 import uuid
 import json
+import math
+from urllib.parse import urlsplit
 from contextvars import ContextVar
 from datetime import datetime
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
+
+from .calculations import validate_reservation
 
 
 _authenticated_user_id: ContextVar[str | None] = ContextVar("staywise_authenticated_user_id", default=None)
@@ -247,7 +251,51 @@ def get_properties() -> list[dict[str, Any]]:
     return _rows("SELECT * FROM properties ORDER BY id")
 
 
+def _bounded_text(item: dict[str, Any], key: str, limit: int, *, required: bool = False) -> str:
+    value = str(item.get(key, "") or "").strip()
+    if required and not value:
+        raise ValueError(f"{key.replace('_', ' ').capitalize()} is required.")
+    if len(value) > limit:
+        raise ValueError(f"{key.replace('_', ' ').capitalize()} must be {limit} characters or fewer.")
+    return value
+
+
+def _safe_url(value: Any, label: str) -> str:
+    value = str(value or "").strip()
+    if len(value) > 2048:
+        raise ValueError(f"{label} URL must be 2048 characters or fewer.")
+    if value:
+        parsed = urlsplit(value)
+        if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
+            raise ValueError(f"{label} URL must be a valid HTTPS link.")
+    return value
+
+
+def _validate_property(item: dict[str, Any]) -> dict[str, Any]:
+    result = dict(item)
+    result["name"] = _bounded_text(item, "name", 120, required=True)
+    result["area"] = _bounded_text(item, "area", 200)
+    for key, low, high in (("bedrooms", 0, 30), ("capacity", 1, 100)):
+        try:
+            result[key] = int(item[key])
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"{key.capitalize()} must be a whole number.") from exc
+        if not low <= result[key] <= high:
+            raise ValueError(f"{key.capitalize()} must be between {low} and {high}.")
+    for key, low, high in (("latitude", -90, 90), ("longitude", -180, 180)):
+        try:
+            result[key] = float(item[key])
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"{key.capitalize()} must be a valid coordinate.") from exc
+        if not math.isfinite(result[key]) or not low <= result[key] <= high:
+            raise ValueError(f"{key.capitalize()} must be between {low} and {high}.")
+    result["airbnb_url"] = _safe_url(item.get("airbnb_url", ""), "Airbnb")
+    result["booking_url"] = _safe_url(item.get("booking_url", ""), "Booking")
+    return result
+
+
 def add_property(item: dict[str, Any]) -> int:
+    item = _validate_property(item)
     if _cloud_user():
         return int(_pg_write("""INSERT INTO public.staywise_properties
             (name,area,bedrooms,capacity,latitude,longitude,airbnb_url,booking_url)
@@ -262,6 +310,7 @@ def add_property(item: dict[str, Any]) -> int:
 
 
 def update_property(property_id: int, item: dict[str, Any]) -> None:
+    item = _validate_property(item)
     if _cloud_user():
         _pg_write("""UPDATE public.staywise_properties SET name=%s,area=%s,bedrooms=%s,capacity=%s,
             latitude=%s,longitude=%s,airbnb_url=%s,booking_url=%s WHERE id=%s""",
@@ -297,7 +346,14 @@ def get_reservations(property_id: int | None = None) -> list[dict[str, Any]]:
 
 
 def add_reservation(item: dict[str, Any]) -> int:
-    property_id = item.get("property_id") or get_properties()[0]["id"]
+    properties = get_properties()
+    if not properties:
+        raise ValueError("Add a property before adding a reservation.")
+    property_id = int(item.get("property_id") or properties[0]["id"])
+    item = {**item, "property_id": property_id}
+    errors = validate_reservation(item, get_reservations(property_id), get_blocked_dates(property_id))
+    if errors:
+        raise ValueError(" ".join(errors))
     if _cloud_user():
         if not _pg_property_owned(int(property_id)):
             raise ValueError("This property is not part of your account.")
