@@ -31,7 +31,8 @@ The local app stores data in `data/staywise.sqlite3`. That directory is excluded
 - PostgreSQL uses authenticated roles and row-level security scoped to the verified Google subject; child records must reference a property owned by the same user.
 - Application and database checks bound dates, rates, counts, text lengths, URLs, and CSV upload size/row count.
 - CSV and Excel exports escape formula-like text; PDF output escapes user-provided markup.
-- Runtime dependencies are directly pinned in `requirements.txt`. GitHub Actions runs `pip-audit` on pushes, pull requests, and weekly; Dependabot proposes dependency and workflow updates.
+- `requirements.in` lists the minimal direct packages; `requirements.txt` pins the full dependency tree with SHA-256 hashes. Regenerate it with `uv pip compile requirements.in --python-version 3.11 --generate-hashes -o requirements.txt`.
+- GitHub Actions runs `pip-audit` on pushes, pull requests, and weekly; Dependabot proposes dependency and workflow updates.
 - Keep `.streamlit/secrets.toml`, database files, API keys, and real guest records out of Git. Use fictional records in public demos.
 
 ## Run tests
