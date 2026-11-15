@@ -54,14 +54,18 @@ def validate_reservation(
         errors.append("Enter a valid email address.")
     try:
         guests = int(reservation.get("guests", 0))
-        if guests < 1 or guests > 100:
-            errors.append("Guest count must be between 1 and 100.")
+        if guests < 1:
+            errors.append("Guest count must be at least 1.")
+        elif guests > 100:
+            errors.append("Guest count must be 100 or fewer.")
     except (TypeError, ValueError, OverflowError):
         errors.append("Guest count must be a whole number.")
     try:
         rate = float(reservation.get("nightly_rate", 0))
-        if not math.isfinite(rate) or rate < 0 or rate > 1_000_000:
-            errors.append("Nightly rate must be a finite amount between 0 and 1,000,000.")
+        if rate < 0:
+            errors.append("Nightly rate cannot be negative.")
+        elif not math.isfinite(rate) or rate > 1_000_000:
+            errors.append("Nightly rate must be a finite amount no greater than 1,000,000.")
     except (TypeError, ValueError, OverflowError):
         errors.append("Nightly rate must be a number.")
     status = str(reservation.get("status", "confirmed")).lower()
