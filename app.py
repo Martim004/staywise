@@ -149,11 +149,17 @@ def ensure_public_demo_example() -> None:
             })
 
 
-auth_user = current_user() if auth_is_configured() else None
+auth_configured = auth_is_configured()
+auth_user = current_user() if auth_configured else None
 set_authenticated_user(auth_user["id"] if auth_user else None)
 public_demo = is_demo_mode() and auth_user is None
-if auth_is_configured() and not auth_user and not is_demo_mode():
+local_development = os.getenv("STAYWISE_LOCAL_MODE", "").strip().lower() in {"1", "true", "yes"}
+if not auth_user and not public_demo and not local_development:
     st.markdown('<div class="brand">StayWise<span style="color:#1D7A78">.</span></div>', unsafe_allow_html=True)
+    if not auth_configured:
+        st.title("Private sign-in is not configured")
+        st.error("This deployment is locked because Google sign-in is not configured.")
+        st.stop()
     st.title("Sign in to StayWise")
     st.write("Your rental portfolio is private to your account. Continue with Google to open it.")
     if st.button("Continue with Google", type="primary"):
