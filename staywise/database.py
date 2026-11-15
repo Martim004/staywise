@@ -61,25 +61,26 @@ def _pg_connect(*, user_id: str | None = None):
 
 
 def _pg_ready() -> None:
-    """Install the versioned StayWise schema using the server-side DB connection."""
-    if not _supabase_database_url():
+    """Install unapplied versioned migrations using the server-side DB connection."""
+    url = _supabase_database_url()
+    if not url:
         raise RuntimeError("Add SUPABASE_DATABASE_URL in Streamlit secrets to enable private accounts.")
-    from pathlib import Path
-
-    migration = Path(__file__).resolve().parent.parent / "supabase" / "migrations" / "202611140001_staywise_user_data.sql"
-    if not migration.exists():
-        raise RuntimeError("StayWise account database migration is missing from this deployment.")
+    migration_dir = Path(__file__).resolve().parent.parent / "supabase" / "migrations"
+    migrations = sorted(migration_dir.glob("*.sql"))
+    if not migrations:
+        raise RuntimeError("StayWise account database migrations are missing from this deployment.")
     import psycopg
-    with psycopg.connect(_supabase_database_url()) as conn:
+    with psycopg.connect(url) as conn:
         conn.execute("""CREATE TABLE IF NOT EXISTS public.staywise_schema_migrations (
             version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())""")
         conn.execute("REVOKE ALL ON public.staywise_schema_migrations FROM anon, authenticated")
-        if conn.execute("SELECT 1 FROM public.staywise_schema_migrations WHERE version=%s",
-                        ("202611140001_staywise_user_data",)).fetchone():
-            return
-        conn.execute(migration.read_text(encoding="utf-8"), prepare=False)
-        conn.execute("INSERT INTO public.staywise_schema_migrations(version) VALUES(%s)",
-                     ("202611140001_staywise_user_data",))
+        for migration in migrations:
+            version = migration.stem
+            if conn.execute("SELECT 1 FROM public.staywise_schema_migrations WHERE version=%s",
+                            (version,)).fetchone():
+                continue
+            conn.execute(migration.read_text(encoding="utf-8"), prepare=False)
+            conn.execute("INSERT INTO public.staywise_schema_migrations(version) VALUES(%s)", (version,))
 
 
 def _pg_rows(sql: str, params: tuple = ()) -> list[dict[str, Any]]:
