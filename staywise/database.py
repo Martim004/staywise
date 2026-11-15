@@ -380,7 +380,19 @@ def delete_reservation(reservation_id: int) -> None:
 
 
 def add_blocked_dates(start_date: str, end_date: str, reason: str = "", property_id: int | None = None) -> int:
-    fallback = property_id or get_properties()[0]["id"]
+    try:
+        start, end = date.fromisoformat(start_date), date.fromisoformat(end_date)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Enter valid blocked-date dates.") from exc
+    if end <= start:
+        raise ValueError("Blocked-date end must be after its start.")
+    reason = str(reason or "").strip()
+    if len(reason) > 2000:
+        raise ValueError("Blocked-date reason must be 2000 characters or fewer.")
+    properties = get_properties()
+    if not properties:
+        raise ValueError("Add a property before blocking dates.")
+    fallback = int(property_id or properties[0]["id"])
     if _cloud_user():
         if not _pg_property_owned(int(fallback)):
             raise ValueError("This property is not part of your account.")
@@ -410,7 +422,28 @@ def delete_blocked_dates(block_id: int) -> None:
 
 
 def add_comparable(item: dict[str, Any]) -> int:
-    values = {"latitude": None, "longitude": None, "property_id": get_properties()[0]["id"], **item}
+    properties = get_properties()
+    if not properties:
+        raise ValueError("Add a property before adding a comparable.")
+    values = {"latitude": None, "longitude": None, "property_id": properties[0]["id"], **item}
+    values["name"] = _bounded_text(values, "name", 160, required=True)
+    values["area"] = _bounded_text(values, "area", 200)
+    values["notes"] = _bounded_text(values, "notes", 2000)
+    values["url"] = _safe_url(values.get("url", ""), "Comparable")
+    try:
+        values["bedrooms"] = int(values["bedrooms"])
+        values["capacity"] = int(values["capacity"])
+        values["nightly_rate"] = float(values["nightly_rate"])
+        values["distance_km"] = float(values["distance_km"])
+        values["observed_date"] = date.fromisoformat(str(values["observed_date"])).isoformat()
+    except (KeyError, TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("Comparable needs valid bedrooms, capacity, date, distance, and nightly price.") from exc
+    if not 0 <= values["bedrooms"] <= 30 or not 1 <= values["capacity"] <= 100:
+        raise ValueError("Comparable bedroom or capacity values are outside the allowed range.")
+    if not math.isfinite(values["nightly_rate"]) or not 0 < values["nightly_rate"] <= 1_000_000:
+        raise ValueError("Comparable price must be a finite amount above 0 and at most 1,000,000.")
+    if not math.isfinite(values["distance_km"]) or not 0 <= values["distance_km"] <= 500:
+        raise ValueError("Comparable distance must be between 0 and 500 km.")
     if _cloud_user():
         if not _pg_property_owned(int(values["property_id"])):
             raise ValueError("This property is not part of your account.")
