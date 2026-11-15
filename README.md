@@ -20,10 +20,19 @@ Requires Python 3.10 or newer.
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
 python -m pip install -r requirements.txt
-streamlit run app.py
+STAYWISE_LOCAL_MODE=1 streamlit run app.py
 ```
 
 The local app stores data in `data/staywise.sqlite3`. That directory is excluded from Git. To inspect fictional sample records locally, set `STAYWISE_DEMO=1` before starting the app.
+
+## Security
+
+- Private deployments fail closed unless Google sign-in is configured. Local SQLite development requires the explicit `STAYWISE_LOCAL_MODE=1` opt-in.
+- PostgreSQL uses authenticated roles and row-level security scoped to the verified Google subject; child records must reference a property owned by the same user.
+- Application and database checks bound dates, rates, counts, text lengths, URLs, and CSV upload size/row count.
+- CSV and Excel exports escape formula-like text; PDF output escapes user-provided markup.
+- Runtime dependencies are directly pinned in `requirements.txt`. GitHub Actions runs `pip-audit` on pushes, pull requests, and weekly; Dependabot proposes dependency and workflow updates.
+- Keep `.streamlit/secrets.toml`, database files, API keys, and real guest records out of Git. Use fictional records in public demos.
 
 ## Run tests
 
