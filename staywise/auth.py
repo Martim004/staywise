@@ -28,7 +28,7 @@ def current_user() -> dict[str, Any] | None:
         claims = dict(st.user)
         subject = str(claims.get("sub", "")).strip()
         email = str(claims.get("email", "")).strip()
-        if not subject or not email or claims.get("email_verified") is False:
+        if not subject or not email or claims.get("email_verified") is not True:
             return None
         return {
             "id": subject,
