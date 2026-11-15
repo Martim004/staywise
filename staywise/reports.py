@@ -31,8 +31,8 @@ def _money(value: float) -> str:
 def _excel_safe(value: Any) -> Any:
     """Keep untrusted text literal when opened in spreadsheet software."""
     if isinstance(value, str):
-        value = value.replace("\\x00", "")
-        if value.lstrip(" \\t\\r\\n").startswith(("=", "+", "-", "@")):
+        value = value.replace("\x00", "")
+        if value.lstrip(" \t\r\n").startswith(("=", "+", "-", "@")):
             return "'" + value
     return value
 
