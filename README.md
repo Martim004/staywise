@@ -14,7 +14,7 @@ The public walkthrough includes a protected **Casa T2 do Campo de Ourique** exam
 
 ## Run locally
 
-Requires Python 3.10 or newer.
+Requires Python 3.11 or newer (needed by the pinned map integration).
 
 ```bash
 python -m venv .venv
