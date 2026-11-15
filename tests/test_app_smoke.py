@@ -12,7 +12,7 @@ class AppSmokeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir, patch.dict(os.environ, {
             "STAYWISE_DEMO":"1", "STAYWISE_DB_PATH":str(Path(temp_dir)/"demo.sqlite3")
         }, clear=False):
-            app = AppTest.from_file("app.py").run(timeout=30)
+            app = AppTest.from_file("../app.py").run(timeout=30)
             self.assertEqual(len(app.exception), 0)
             for page in ["Bookings", "Calendar", "Market"]:
                 app.sidebar.radio[0].set_value(page)
