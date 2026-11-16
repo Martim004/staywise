@@ -251,6 +251,56 @@ def get_properties() -> list[dict[str, Any]]:
     return _rows("SELECT * FROM properties ORDER BY id")
 
 
+def get_workspace_bootstrap() -> tuple[dict[str, str], list[dict[str, Any]]]:
+    """Load settings and properties together to avoid opening two DB connections per rerun."""
+    settings = DEFAULTS.copy()
+    if _cloud_user():
+        with _pg_connect(user_id=_cloud_user()) as conn:
+            rows = conn.execute("SELECT key,value FROM public.staywise_settings").fetchall()
+            properties = conn.execute("SELECT * FROM public.staywise_properties ORDER BY id").fetchall()
+        settings.update({row["key"]: row["value"] for row in rows})
+        return settings, [dict(row) for row in properties]
+    with connect() as conn:
+        rows = conn.execute("SELECT key,value FROM settings").fetchall()
+        properties = conn.execute("SELECT * FROM properties ORDER BY id").fetchall()
+    settings.update({row["key"]: row["value"] for row in rows})
+    return settings, [dict(row) for row in properties]
+
+
+def get_property_workspace_data(property_id: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Fetch one property's reservations, blocks, and comparables in a single DB connection."""
+    if _cloud_user():
+        with _pg_connect(user_id=_cloud_user()) as conn:
+            reservations = conn.execute(
+                "SELECT * FROM public.staywise_reservations WHERE property_id=%s ORDER BY checkin,id", (property_id,)
+            ).fetchall()
+            blocks = conn.execute(
+                "SELECT * FROM public.staywise_blocked_dates WHERE property_id=%s ORDER BY start_date", (property_id,)
+            ).fetchall()
+            comparables = conn.execute(
+                "SELECT * FROM public.staywise_comparables WHERE property_id=%s ORDER BY observed_date DESC,id", (property_id,)
+            ).fetchall()
+        return tuple(_normalize_db_rows(rows) for rows in (reservations, blocks, comparables))
+    with connect() as conn:
+        reservations = conn.execute("SELECT * FROM reservations WHERE property_id=? ORDER BY checkin,id", (property_id,)).fetchall()
+        blocks = conn.execute("SELECT * FROM blocked_dates WHERE property_id=? ORDER BY start_date", (property_id,)).fetchall()
+        comparables = conn.execute("SELECT * FROM comparables WHERE property_id=? ORDER BY observed_date DESC,id", (property_id,)).fetchall()
+    return tuple([dict(row) for row in rows] for rows in (reservations, blocks, comparables))
+
+
+def _normalize_db_rows(rows) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        for key, value in item.items():
+            if isinstance(value, (date, datetime)):
+                item[key] = value.isoformat()
+            elif hasattr(value, "as_tuple"):
+                item[key] = float(value)
+        result.append(item)
+    return result
+
+
 def _bounded_text(item: dict[str, Any], key: str, limit: int, *, required: bool = False) -> str:
     value = str(item.get(key, "") or "").strip()
     if required and not value:
