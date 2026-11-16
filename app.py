@@ -20,8 +20,9 @@ from staywise.calculations import competitor_summary, date_ranges_overlap, valid
 from staywise.auth import auth_is_configured, current_user, sign_in, sign_out
 from staywise.database import (add_blocked_dates, add_comparable, add_property, add_reservation,
                                delete_blocked_dates, delete_comparable, delete_property, delete_reservation,
-                               get_blocked_dates, get_comparables,
-                               get_properties, get_reservations, get_settings, init_db, is_demo_mode,
+                               get_blocked_dates, get_comparables, get_property_workspace_data,
+                               get_properties, get_reservations, get_settings, get_workspace_bootstrap,
+                               init_db, is_demo_mode,
                                save_user_profile, set_authenticated_user, update_property,
                                set_comparable_selected)
 from staywise.imports import export_csv, parse_booking_csv, template_csv
@@ -167,21 +168,22 @@ if not auth_user and not public_demo and not local_development:
     st.stop()
 
 try:
-    init_db()
-    if auth_user:
-        save_user_profile(auth_user)
+    db_scope = auth_user["id"] if auth_user else ("demo" if public_demo else "local")
+    if st.session_state.get("_staywise_db_ready_for") != db_scope:
+        init_db()
+        if auth_user:
+            save_user_profile(auth_user)
+        # Seed fictional examples once per session/account rather than checking on every rerun.
+        if public_demo or auth_user:
+            ensure_public_demo_example()
+        st.session_state["_staywise_db_ready_for"] = db_scope
 except Exception as exc:
     st.error("StayWise could not open its private Supabase data store. Check the Supabase database settings and apply the account migration.")
     st.caption(f"Details: {type(exc).__name__}")
     st.stop()
 
 READ_ONLY = public_demo
-# Ensure the fictional example is available in the walkthrough and every private account.
-if public_demo or auth_user:
-    ensure_public_demo_example()
-
-settings = get_settings()
-properties = get_properties()
+settings, properties = get_workspace_bootstrap()
 if "pending_property_id" in st.session_state:
     st.session_state["selected_property_id"] = st.session_state.pop("pending_property_id")
 if public_demo and not st.session_state.get("demo_sample_defaulted"):
@@ -502,9 +504,7 @@ with st.sidebar:
 settings = {**settings, "property_name": active_property["name"], "property_area": active_property["area"],
             "bedrooms": str(active_property["bedrooms"]), "capacity": str(active_property["capacity"]),
             "latitude": str(active_property["latitude"]), "longitude": str(active_property["longitude"])}
-reservations = get_reservations(active_property_id)
-blocks = get_blocked_dates(active_property_id)
-comps = get_comparables(active_property_id)
+reservations, blocks, comps = get_property_workspace_data(active_property_id)
 
 if READ_ONLY:
     st.warning("Public walkthrough: property profiles stay in this browser session. Use fictional property details only. Guest records, CSV uploads, and booking edits are disabled.", icon="🔒")
