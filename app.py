@@ -5,7 +5,7 @@ import json
 import math
 import os
 import re
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
 from html import escape
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -24,7 +24,7 @@ from staywise.database import (add_blocked_dates, add_comparable, add_property, 
                                get_blocked_dates, get_comparables, get_property_workspace_data,
                                get_properties, get_reservations, get_settings, get_workspace_bootstrap,
                                init_db, is_demo_mode,
-                               save_user_profile, set_authenticated_user, update_property,
+                               save_user_profile, set_authenticated_user, update_property, update_property_stay_hours,
                                set_comparable_selected)
 from staywise.imports import export_csv, parse_booking_csv, template_csv
 from staywise.inside_airbnb import LISBON_LISTINGS_URL, SOURCE_PAGE, listings_within_radius
@@ -505,6 +505,11 @@ settings = {**settings, "property_name": active_property["name"], "property_area
             "latitude": str(active_property["latitude"]), "longitude": str(active_property["longitude"])}
 reservations, blocks, comps = get_property_workspace_data(active_property_id)
 
+def property_stay_time(field: str) -> time | None:
+    value = active_property.get(field)
+    return time.fromisoformat(value) if isinstance(value, str) else value
+
+
 if READ_ONLY:
     st.warning("Public walkthrough: property profiles stay in this browser session. Use fictional property details only. Guest records, CSV uploads, and booking edits are disabled.", icon="🔒")
 
@@ -611,6 +616,21 @@ elif page == "Overview":
     cols[0].metric("Blocked date ranges", len(blocks))
     cols[1].metric("Manual comparable median", money(market["median_rate"]) if market["median_rate"] is not None else "—")
     st.info("Use the Calendar to see availability by day, or Market to compare nearby Lisbon Airbnb listings by radius.")
+    with st.expander("Check-in and check-out hours"):
+        st.caption("Set the usual local hours for this property. Select which hours to save.")
+        with st.form(f"property_stay_hours_{active_property_id}"):
+            checkin_column, checkout_column = st.columns(2)
+            saved_checkin = property_stay_time("checkin_time")
+            saved_checkout = property_stay_time("checkout_time")
+            use_checkin = checkin_column.checkbox("Set check-in time", value=saved_checkin is not None)
+            checkin_time = checkin_column.time_input("Check-in time", value=saved_checkin or time(17), step=60)
+            use_checkout = checkout_column.checkbox("Set check-out time", value=saved_checkout is not None)
+            checkout_time = checkout_column.time_input("Check-out time", value=saved_checkout or time(12), step=60)
+            if st.form_submit_button("Save stay hours"):
+                update_property_stay_hours(
+                    active_property_id, checkin_time if use_checkin else None, checkout_time if use_checkout else None,
+                )
+                st.rerun()
     with st.expander("Manage your rental portfolio"):
         st.caption("Save each home separately, then switch between them from the property selector. Airbnb and Booking.com links open your listing; StayWise does not sync accounts directly.")
         with st.form("add_property", clear_on_submit=True):
@@ -665,6 +685,12 @@ elif page == "Bookings":
     st.markdown('<div class="eyebrow">Guest and stay records</div>', unsafe_allow_html=True)
     st.title("Bookings")
     st.markdown('<p class="subtle">Keep reservations, contact details, and owner-blocked dates together. Dates are check-in inclusive and check-out exclusive.</p>', unsafe_allow_html=True)
+    checkin_time = property_stay_time("checkin_time")
+    checkout_time = property_stay_time("checkout_time")
+    checkin_label = checkin_time.strftime("%H:%M") if checkin_time is not None else "Not set"
+    checkout_label = checkout_time.strftime("%H:%M") if checkout_time is not None else "Not set"
+    st.caption(f"Standard check-in: {checkin_label} · Standard check-out: {checkout_label}")
+
     today = date.today().isoformat()
     upcoming_checkouts = sorted(
         (
@@ -699,14 +725,38 @@ elif page == "Bookings":
             for reservation in upcoming_checkouts if reservation["id"] not in cleaning_by_booking
         }
         if unscheduled:
-            with st.form(f"schedule_cleaning_{active_property_id}"):
-                booking_id = st.selectbox(
-                    "Check-out for cleaning", list(unscheduled),
-                    format_func=lambda rid: f"{unscheduled[rid]['checkout']} · {unscheduled[rid]['guest_name']}",
+            booking_id = st.selectbox(
+                "Check-out for cleaning", list(unscheduled),
+                format_func=lambda rid: f"{unscheduled[rid]['checkout']} · {unscheduled[rid]['guest_name']}",
+                key=f"cleaning_checkout_{active_property_id}",
+            )
+            checkout_day = unscheduled[booking_id]["checkout"]
+            same_day_arrival = any(
+                reservation["checkin"] == checkout_day and reservation["status"] in {"confirmed", "completed"}
+                for reservation in reservations
+            )
+            arrival_time = checkin_time if same_day_arrival else None
+            cleaning_time = st.time_input(
+                "Cleaning time", value=checkout_time or time(11), step=60, key=f"cleaning_time_{booking_id}",
+            )
+            too_late = arrival_time is not None and cleaning_time >= arrival_time
+            early = checkout_time is not None and cleaning_time < checkout_time
+            early_confirmed = False
+
+            if too_late:
+                st.error(f"Choose a cleaning time before the next check-in at {arrival_time:%H:%M}.")
+            elif arrival_time is not None:
+                cleaning_day = date.fromisoformat(checkout_day)
+                remaining = datetime.combine(cleaning_day, arrival_time) - datetime.combine(cleaning_day, cleaning_time)
+                minutes = int(remaining.total_seconds() // 60)
+                st.caption(f"{minutes} min until the next check-in at {arrival_time:%H:%M}.")
+            if early and not too_late:
+                st.error(f"Guests may still be in the property until {checkout_time:%H:%M}.")
+                early_confirmed = st.checkbox(
+                    "An early check-out has been arranged.", key=f"early_checkout_{booking_id}_{cleaning_time:%H%M}",
                 )
-                cleaning_time = st.time_input("Cleaning time", value=time(11), step=900)
-                schedule = st.form_submit_button("Schedule cleaning")
-            if schedule:
+
+            if st.button("Schedule cleaning", disabled=too_late or (early and not early_confirmed)):
                 if schedule_checkout_cleaning(active_property_id, booking_id, cleaning_time):
                     st.rerun()
                 else:
