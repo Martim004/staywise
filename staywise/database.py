@@ -11,7 +11,7 @@ import math
 from urllib.parse import urlsplit
 from contextvars import ContextVar
 from datetime import datetime
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -185,6 +185,10 @@ def init_db() -> None:
             source TEXT NOT NULL DEFAULT 'Direct', notes TEXT NOT NULL DEFAULT '',
             property_id INTEGER REFERENCES properties(id),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS checkout_cleanings (
+            reservation_id INTEGER PRIMARY KEY REFERENCES reservations(id) ON DELETE CASCADE,
+            scheduled_time TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0,1))
         );
         CREATE TABLE IF NOT EXISTS blocked_dates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -427,6 +431,51 @@ def delete_reservation(reservation_id: int) -> None:
         return
     with connect() as conn:
         conn.execute("DELETE FROM reservations WHERE id=?", (reservation_id,))
+
+
+def get_checkout_cleanings(property_id: int) -> list[dict[str, Any]]:
+    if _cloud_user():
+        return _pg_rows("""SELECT c.reservation_id, r.checkout,
+            to_char(c.scheduled_time, 'HH24:MI') AS scheduled_time, c.completed
+            FROM public.staywise_checkout_cleanings c
+            JOIN public.staywise_reservations r ON r.id = c.reservation_id
+            WHERE r.property_id=%s AND r.status IN ('confirmed','completed')
+            ORDER BY r.checkout,c.scheduled_time,c.reservation_id""", (property_id,))
+    return _rows("""SELECT c.reservation_id,r.checkout,c.scheduled_time,c.completed
+        FROM checkout_cleanings c JOIN reservations r ON r.id = c.reservation_id
+        WHERE r.property_id=? AND r.status IN ('confirmed','completed')
+        ORDER BY r.checkout,c.scheduled_time,c.reservation_id""", (property_id,))
+
+
+def schedule_checkout_cleaning(property_id: int, reservation_id: int, scheduled_time: time) -> bool:
+    """Schedule one cleaning per active checkout without replacing an existing task."""
+    clock = scheduled_time.isoformat(timespec="minutes")
+    params = (clock, reservation_id, property_id, date.today().isoformat())
+    if _cloud_user():
+        return _pg_write("""INSERT INTO public.staywise_checkout_cleanings (reservation_id,scheduled_time)
+            SELECT id,%s::time FROM public.staywise_reservations
+            WHERE id=%s AND property_id=%s AND checkout >= %s AND status IN ('confirmed','completed')
+            ON CONFLICT (reservation_id) DO NOTHING RETURNING reservation_id AS id""",
+            params, returning=True) is not None
+    with connect() as conn:
+        return conn.execute("""INSERT INTO checkout_cleanings (reservation_id,scheduled_time)
+            SELECT id,? FROM reservations
+            WHERE id=? AND property_id=? AND checkout >= ? AND status IN ('confirmed','completed')
+            ON CONFLICT (reservation_id) DO NOTHING""", params).rowcount == 1
+
+
+def complete_checkout_cleaning(property_id: int, reservation_id: int) -> None:
+    params = (reservation_id, property_id)
+    if _cloud_user():
+        _pg_write("""UPDATE public.staywise_checkout_cleanings SET completed=true
+            WHERE reservation_id=%s AND reservation_id IN (
+                SELECT id FROM public.staywise_reservations
+                WHERE property_id=%s AND status IN ('confirmed','completed'))""", params)
+        return
+    with connect() as conn:
+        conn.execute("""UPDATE checkout_cleanings SET completed=1
+            WHERE reservation_id=? AND reservation_id IN (
+                SELECT id FROM reservations WHERE property_id=? AND status IN ('confirmed','completed'))""", params)
 
 
 def add_blocked_dates(start_date: str, end_date: str, reason: str = "", property_id: int | None = None) -> int:

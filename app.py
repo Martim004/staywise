@@ -5,7 +5,7 @@ import json
 import math
 import os
 import re
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 from html import escape
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -19,6 +19,7 @@ from streamlit_folium import st_folium
 from staywise.calculations import competitor_summary, date_ranges_overlap, validate_reservation
 from staywise.auth import auth_is_configured, current_user, sign_in, sign_out
 from staywise.database import (add_blocked_dates, add_comparable, add_property, add_reservation,
+                               complete_checkout_cleaning, get_checkout_cleanings, schedule_checkout_cleaning,
                                delete_blocked_dates, delete_comparable, delete_property, delete_reservation,
                                get_blocked_dates, get_comparables, get_property_workspace_data,
                                get_properties, get_reservations, get_settings, get_workspace_bootstrap,
@@ -664,6 +665,57 @@ elif page == "Bookings":
     st.markdown('<div class="eyebrow">Guest and stay records</div>', unsafe_allow_html=True)
     st.title("Bookings")
     st.markdown('<p class="subtle">Keep reservations, contact details, and owner-blocked dates together. Dates are check-in inclusive and check-out exclusive.</p>', unsafe_allow_html=True)
+    today = date.today().isoformat()
+    upcoming_checkouts = sorted(
+        (
+            reservation for reservation in reservations
+            if reservation["status"] in {"confirmed", "completed"}
+            and reservation["checkout"] >= today
+        ),
+        key=lambda reservation: (reservation["checkout"], reservation["id"]),
+    )
+    st.subheader("Upcoming check-outs")
+    st.caption("Schedule a cleaning on the check-out date and manage it in Calendar.")
+    if upcoming_checkouts:
+        cleaning_by_booking = {
+            task["reservation_id"]: task for task in get_checkout_cleanings(active_property_id)
+        }
+        st.dataframe(
+            pd.DataFrame([
+                {
+                    "Check-out": reservation["checkout"],
+                    "Guest": reservation["guest_name"],
+                    "Source": reservation["source"],
+                    "Cleaning": "Completed" if cleaning_by_booking.get(reservation["id"], {}).get("completed")
+                    else cleaning_by_booking.get(reservation["id"], {}).get("scheduled_time", "Not scheduled"),
+                }
+                for reservation in upcoming_checkouts
+            ]),
+            hide_index=True,
+            width="stretch",
+        )
+        unscheduled = {
+            reservation["id"]: reservation
+            for reservation in upcoming_checkouts if reservation["id"] not in cleaning_by_booking
+        }
+        if unscheduled:
+            with st.form(f"schedule_cleaning_{active_property_id}"):
+                booking_id = st.selectbox(
+                    "Check-out for cleaning", list(unscheduled),
+                    format_func=lambda rid: f"{unscheduled[rid]['checkout']} · {unscheduled[rid]['guest_name']}",
+                )
+                cleaning_time = st.time_input("Cleaning time", value=time(11), step=900)
+                schedule = st.form_submit_button("Schedule cleaning")
+            if schedule:
+                if schedule_checkout_cleaning(active_property_id, booking_id, cleaning_time):
+                    st.rerun()
+                else:
+                    st.warning("This check-out is no longer available for scheduling. Reload Bookings.")
+        else:
+            st.caption("All upcoming check-outs have a cleaning scheduled.")
+    else:
+        st.info("No upcoming check-outs for this property.")
+
     tab_add, tab_import, tab_block, tab_list = st.tabs(["Add booking", "Import CSV", "Block dates", "All bookings"])
     with tab_add:
         with st.form("new_booking", clear_on_submit=True):
@@ -760,6 +812,7 @@ elif page == "Calendar":
     .calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(75px,1fr));gap:8px;margin-top:10px}
     .weekday{font-size:12px;font-weight:700;text-align:center;padding:6px}
     .day-card{min-height:76px;border:1px solid #e2e9eb;border-radius:12px;padding:9px;background:#fff;color:#17324d}
+    .cleaning-badge{font-size:11px;font-weight:700;margin-top:6px;color:#56368a}
     .day-card.empty{background:transparent;border:0}.day-number{font-size:17px;font-weight:700}
     .day-state{font-size:11px;font-weight:700;margin-top:12px;display:inline-flex;padding:4px 8px;border-radius:20px}
     .day-card.available{background:#f2faf6;border-color:#d5eee1}.available .day-state{color:#216c4c;background:#dcf3e6}
@@ -769,6 +822,11 @@ elif page == "Calendar":
     .dot{width:10px;height:10px;border-radius:50%;display:inline-block}.dot.available{background:#48a778}.dot.booked{background:#657bd0}.dot.blocked{background:#e59648}
     @media(max-width:700px){.calendar-grid{gap:4px}.day-card{min-height:58px;padding:5px}.day-state{font-size:9px;padding:3px 5px}}
     </style>""", unsafe_allow_html=True)
+    month_prefix = f"{year:04d}-{month:02d}-"
+    cleanings_by_date = {}
+    for task in get_checkout_cleanings(active_property_id):
+        if task["checkout"].startswith(month_prefix):
+            cleanings_by_date.setdefault(task["checkout"], []).append(task)
     html = ["<div class='calendar-grid'>"]
     html.extend(f"<div class='weekday'>{d}</div>" for d in ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"])
     matrix = calendar.monthcalendar(year, month)
@@ -783,10 +841,31 @@ elif page == "Calendar":
             status = "booked" if booking else "blocked" if blocked else "available"
             label = "Booked" if booking else "Blocked" if blocked else "Available"
             hint = escape(booking["guest_name"]) if booking else escape(blocked.get("reason") or "Unavailable") if blocked else "Open night"
-            html.append(f"<div class='day-card {status}' title='{hint}'><div class='day-number'>{day}</div><span class='day-state'>{label}</span></div>")
+            tasks = cleanings_by_date.get(current.isoformat(), [])
+            badges = "".join(
+                f"<div class='cleaning-badge'>{escape(task['scheduled_time'])} "
+                f"{'Cleaned' if task['completed'] else 'Cleaning'}</div>"
+                for task in tasks
+            )
+            html.append(f"<div class='day-card {status}' title='{hint}'><div class='day-number'>{day}</div>"
+                        f"<span class='day-state'>{label}</span>{badges}</div>")
     html.append("</div>")
     st.markdown("".join(html), unsafe_allow_html=True)
     st.caption("Booked and blocked dates are exclusive of each checkout/end date. Use Bookings → Block dates to mark owner stays or maintenance.")
+
+    st.subheader("Cleaning tasks")
+    if not cleanings_by_date:
+        st.info("No cleanings scheduled for this month.")
+    for day_tasks in cleanings_by_date.values():
+        for task in day_tasks:
+            reservation_id = task["reservation_id"]
+            details, action = st.columns([3, 1])
+            status = "Completed" if task["completed"] else "Scheduled"
+            details.write(f"{task['checkout']} · {task['scheduled_time']} · {status} · Booking #{reservation_id}")
+            # Keep completion available for a cleaning on any date in the selected month.
+            if not task["completed"] and action.button("Mark complete", key=f"complete_cleaning_{reservation_id}"):
+                complete_checkout_cleaning(active_property_id, reservation_id)
+                st.rerun()
 
 
 elif page == "Market":
