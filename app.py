@@ -36,15 +36,13 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
 html, body, [class*="css"] {font-family:'DM Sans',sans-serif;}
-h1,h2,h3 {font-family:'Manrope',sans-serif; color:#17324D;}
-.stApp {background:#F6F8F8;}
-div[data-testid="stMetric"] {background:#fff;border:1px solid #E3EAED;padding:16px 18px;border-radius:14px;box-shadow:0 4px 14px #17324d08;}
-div[data-testid="stMetricLabel"] {color:#526676;}
-.brand {font-family:Manrope,sans-serif;font-size:24px;font-weight:800;color:#17324D;letter-spacing:-.7px;}
-.eyebrow {text-transform:uppercase;letter-spacing:1.5px;font-size:11px;font-weight:700;color:#1D7A78;margin-bottom:4px;}
-.subtle {color:#657987;font-size:14px;}
-div[data-testid="stForm"] {background:white;padding:18px;border:1px solid #E3EAED;border-radius:14px;}
-.revenue-hero {position:relative;overflow:hidden;background:radial-gradient(circle at 88% 16%,#4b9c8c 0,transparent 28%),linear-gradient(120deg,#17324D,#145F5D);color:#fff;border-radius:24px;padding:28px 32px;margin:10px 0 18px;box-shadow:0 14px 34px #17324d20;}
+h1,h2,h3 {font-family:'Manrope',sans-serif;}
+div[data-testid="stMetric"] {border:1px solid color-mix(in srgb, currentColor 22%, transparent);padding:16px 18px;border-radius:14px;box-shadow:0 4px 14px #17324d08;}
+.brand {font-family:Manrope,sans-serif;font-size:24px;font-weight:800;letter-spacing:-.7px;}
+.eyebrow {text-transform:uppercase;letter-spacing:1.5px;font-size:11px;font-weight:700;margin-bottom:4px;}
+.subtle {font-size:14px;}
+div[data-testid="stForm"] {padding:18px;border:1px solid color-mix(in srgb, currentColor 22%, transparent);border-radius:14px;}
+.revenue-hero {position:relative;overflow:hidden;background:radial-gradient(circle at 88% 16%,#286b63 0,transparent 28%),linear-gradient(120deg,#17324D,#145F5D);color:#fff;border-radius:24px;padding:28px 32px;margin:10px 0 18px;box-shadow:0 14px 34px #17324d20;}
 .revenue-hero:after {content:'';position:absolute;width:210px;height:210px;border:1px solid #ffffff26;border-radius:50%;right:8%;top:-118px;box-shadow:0 0 0 28px #ffffff09,0 0 0 58px #ffffff07;pointer-events:none;}
 .revenue-hero-label {font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#c4e6dc;}
 .revenue-hero-value {font-family:Manrope,sans-serif;font-size:42px;font-weight:800;letter-spacing:-1.5px;line-height:1.2;margin:8px 0 2px;}
@@ -53,33 +51,33 @@ div[data-testid="stForm"] {background:white;padding:18px;border:1px solid #E3EAE
 .revenue-kpi {height:100%;min-height:112px;background:#fff;border:1px solid #e3eaed;border-radius:18px;padding:18px 20px;box-shadow:0 6px 20px #17324d08;}
 .revenue-kpi-label {font-size:13px;font-weight:600;color:#657987;}
 .revenue-kpi-value {font-family:Manrope,sans-serif;font-size:26px;font-weight:800;letter-spacing:-.5px;color:#17324d;margin-top:9px;}
-.revenue-kpi-note {font-size:12px;color:#82919a;margin-top:3px;}
+.revenue-kpi-note {font-size:12px;color:#526676;margin-top:3px;}
 .revenue-chart-card {background:#fff;border:1px solid #e3eaed;border-radius:20px;padding:20px 22px 10px;box-shadow:0 6px 20px #17324d08;margin-top:18px;}
 .revenue-chart-title {font-family:Manrope,sans-serif;font-size:17px;font-weight:700;color:#17324d;margin-bottom:2px;}
-.revenue-chart-subtitle {font-size:12px;color:#82919a;margin-bottom:12px;}
+.revenue-chart-subtitle {font-size:12px;color:#526676;margin-bottom:12px;}
 .revenue-chart-svg {display:block;width:100%;height:auto;}
-.revenue-section-title {font-family:Manrope,sans-serif;font-size:17px;font-weight:700;color:#17324d;margin:22px 0 4px;}
+.revenue-section-title {font-family:Manrope,sans-serif;font-size:17px;font-weight:700;margin:22px 0 4px;}
 .revenue-empty {background:#fff;border:1px dashed #cbd8dc;border-radius:16px;padding:22px;color:#657987;text-align:center;}
-.account-hero {position:relative;overflow:hidden;background:radial-gradient(circle at 86% 10%,#63aa9b 0,transparent 28%),linear-gradient(118deg,#17324d,#155f5d);border-radius:24px;padding:30px 34px;margin:8px 0 22px;color:white;box-shadow:0 14px 34px #17324d20;}
+.account-hero {position:relative;overflow:hidden;background:radial-gradient(circle at 86% 10%,#286b63 0,transparent 28%),linear-gradient(118deg,#17324d,#155f5d);border-radius:24px;padding:30px 34px;margin:8px 0 22px;color:white;box-shadow:0 14px 34px #17324d20;}
 .account-hero:after {content:'';position:absolute;width:240px;height:240px;border:1px solid #ffffff25;border-radius:50%;right:8%;top:-145px;box-shadow:0 0 0 32px #ffffff08,0 0 0 66px #ffffff06;pointer-events:none;}
 .account-hero-kicker {font-size:11px;font-weight:700;letter-spacing:1.7px;text-transform:uppercase;color:#c4e6dc;}
 .account-hero h1 {color:#fff;margin:10px 0 4px;font-size:36px;}
 .account-hero-copy {color:#deeeea;font-size:14px;}
 .account-layout {align-items:flex-start;}
-.st-key-account_menu,.st-key-account_detail {background:#fff;border:1px solid #e3eaed;border-radius:20px;padding:20px;box-shadow:0 6px 20px #17324d08;}
+.st-key-account_menu,.st-key-account_detail {border:1px solid color-mix(in srgb, currentColor 22%, transparent);border-radius:20px;padding:20px;box-shadow:0 6px 20px #17324d08;}
 .st-key-account_menu [data-testid="stButton"] button {min-height:48px;border-radius:12px;justify-content:flex-start;}
 .st-key-account_menu [data-testid="stButton"] button[kind="primary"] {background:#eaf2f1;border:1px solid #d9e9e5;color:#17324d;box-shadow:none;}
 .account-signout [data-testid="stButton"] button {border:0;background:transparent;text-decoration:underline;}
 .account-detail-card {min-height:330px;padding:26px 28px;}
-.account-detail-label {color:#1d7a78;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700;}
-.account-info-row {display:flex;justify-content:space-between;gap:20px;padding:14px 0;border-bottom:1px solid #edf1f2;color:#526676;}
-.account-info-row strong {color:#17324d;text-align:right;overflow-wrap:anywhere;}
+.account-detail-label {font-size:11px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700;}
+.account-info-row {display:flex;justify-content:space-between;gap:20px;padding:14px 0;border-bottom:1px solid color-mix(in srgb, currentColor 22%, transparent);}
+.account-info-row strong {text-align:right;overflow-wrap:anywhere;}
 .account-secure-note {border-radius:14px;background:#edf6f2;padding:16px 18px;color:#315f55;margin-top:18px;}
 .st-key-staywise_chat_launcher {position:fixed!important;right:20px!important;bottom:80px!important;left:auto!important;top:auto!important;width:58px!important;min-width:58px!important;max-width:58px!important;height:58px!important;z-index:99999!important;overflow:visible!important;display:flex!important;align-items:center!important;justify-content:center!important;}
 .st-key-staywise_chat_launcher [data-testid="stPopover"] {width:58px!important;min-width:58px!important;}
 .st-key-staywise_chat_launcher button[data-testid="stPopoverButton"] {width:58px!important;min-width:58px!important;height:58px!important;border-radius:50%!important;background:#17324d!important;color:#fff!important;border:2px solid white!important;box-shadow:0 8px 24px #17324d44!important;padding:0!important;}
 .st-key-staywise_chat_launcher button[data-testid="stPopoverButton"]:hover {background:#1d7a78!important;color:#fff!important;border-color:#fff!important;}
-.staywise-chat-note {font-size:12px;color:#657987;line-height:1.45;margin-bottom:12px;}
+.staywise-chat-note {font-size:12px;line-height:1.45;margin-bottom:12px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -156,7 +154,7 @@ set_authenticated_user(auth_user["id"] if auth_user else None)
 public_demo = is_demo_mode() and auth_user is None
 local_development = os.getenv("STAYWISE_LOCAL_MODE", "").strip().lower() in {"1", "true", "yes"}
 if not auth_user and not public_demo and not local_development:
-    st.markdown('<div class="brand">StayWise<span style="color:#1D7A78">.</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand">StayWise<span>.</span></div>', unsafe_allow_html=True)
     if not auth_configured:
         st.title("Private sign-in is not configured")
         st.error("This deployment is locked because Google sign-in is not configured.")
@@ -193,7 +191,7 @@ if public_demo and not st.session_state.get("demo_sample_defaulted"):
         st.session_state["demo_sample_defaulted"] = True
 
 if not properties:
-    st.markdown('<div class="brand">StayWise<span style="color:#1D7A78">.</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand">StayWise<span>.</span></div>', unsafe_allow_html=True)
     st.markdown('<div class="eyebrow">Portfolio setup</div>', unsafe_allow_html=True)
     st.title("Add your first rental")
     intro = ("Start with a property profile, then explore its calendar, market map, and revenue workspace. "
@@ -260,7 +258,7 @@ def revenue_chart_svg(values: dict[date, float], description: str) -> str:
         value = upper * (4 - tick) / 4
         y = top + plot_height * tick / 4
         parts.append(f'<line x1="{left}" y1="{y:.1f}" x2="{width-right}" y2="{y:.1f}" stroke="#e8eef0" stroke-width="1"/>')
-        parts.append(f'<text x="{left-10}" y="{y+4:.1f}" text-anchor="end" fill="#82919a" font-size="12" font-family="DM Sans, sans-serif">€{value:,.0f}</text>')
+        parts.append(f'<text x="{left-10}" y="{y+4:.1f}" text-anchor="end" fill="#526676" font-size="12" font-family="DM Sans, sans-serif">€{value:,.0f}</text>')
     label_step = max(1, math.ceil(len(entries) / 7))
     points = []
     for index, (day, amount) in enumerate(entries):
@@ -269,7 +267,7 @@ def revenue_chart_svg(values: dict[date, float], description: str) -> str:
         points.append((x, y, day, amount))
         if index % label_step == 0 or index == len(entries) - 1:
             label = escape(day.strftime("%b %d") if len(entries) > 7 else day.strftime("%d"))
-            parts.append(f'<text x="{x:.1f}" y="{height-13}" text-anchor="middle" fill="#82919a" font-size="12" font-family="DM Sans, sans-serif">{label}</text>')
+            parts.append(f'<text x="{x:.1f}" y="{height-13}" text-anchor="middle" fill="#526676" font-size="12" font-family="DM Sans, sans-serif">{label}</text>')
 
     if points:
         baseline = top + plot_height
@@ -477,7 +475,7 @@ with account_slot:
 
 
 with st.sidebar:
-    st.markdown('<div class="brand">StayWise<span style="color:#1D7A78">.</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand">StayWise<span>.</span></div>', unsafe_allow_html=True)
     st.caption("Short-stay rental studio")
     st.divider()
     page = st.radio("Workspace", ["Overview", "Bookings", "Calendar", "Market", "Revenue", "Account"],
@@ -760,14 +758,14 @@ elif page == "Calendar":
     st.markdown("<div class='legend'><span><i class='dot available'></i>Available</span><span><i class='dot booked'></i>Booked</span><span><i class='dot blocked'></i>Blocked</span></div>", unsafe_allow_html=True)
     st.markdown("""<style>
     .calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(75px,1fr));gap:8px;margin-top:10px}
-    .weekday{color:#647787;font-size:12px;font-weight:700;text-align:center;padding:6px}
+    .weekday{font-size:12px;font-weight:700;text-align:center;padding:6px}
     .day-card{min-height:76px;border:1px solid #e2e9eb;border-radius:12px;padding:9px;background:#fff;color:#17324d}
     .day-card.empty{background:transparent;border:0}.day-number{font-size:17px;font-weight:700}
     .day-state{font-size:11px;font-weight:700;margin-top:12px;display:inline-flex;padding:4px 8px;border-radius:20px}
     .day-card.available{background:#f2faf6;border-color:#d5eee1}.available .day-state{color:#216c4c;background:#dcf3e6}
     .day-card.booked{background:#f1f5ff;border-color:#dbe4ff}.booked .day-state{color:#3d58a4;background:#e2e9ff}
     .day-card.blocked{background:#fff7ed;border-color:#ffdfbd}.blocked .day-state{color:#9a571a;background:#ffead2}
-    .legend{display:flex;gap:20px;color:#526676;font-size:13px}.legend span{display:flex;align-items:center;gap:7px}
+    .legend{display:flex;gap:20px;font-size:13px}.legend span{display:flex;align-items:center;gap:7px}
     .dot{width:10px;height:10px;border-radius:50%;display:inline-block}.dot.available{background:#48a778}.dot.booked{background:#657bd0}.dot.blocked{background:#e59648}
     @media(max-width:700px){.calendar-grid{gap:4px}.day-card{min-height:58px;padding:5px}.day-state{font-size:9px;padding:3px 5px}}
     </style>""", unsafe_allow_html=True)
