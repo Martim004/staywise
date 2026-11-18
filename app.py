@@ -36,22 +36,11 @@ html, body, [class*="css"] {font-family:'DM Sans',sans-serif;}
 h1,h2,h3 {font-family:'Manrope',sans-serif;}
 div[data-testid="stMetric"] {border:1px solid color-mix(in srgb, currentColor 22%, transparent);padding:16px 18px;border-radius:14px;box-shadow:0 4px 14px #17324d08;}
 .brand {font-family:Manrope,sans-serif;font-size:24px;font-weight:800;letter-spacing:-.7px;}
-.st-key-workspace_page [role="radiogroup"] {gap:4px;}
-.st-key-workspace_page label[data-baseweb="radio"] {
-    position:relative; display:flex; align-items:center; width:100%; box-sizing:border-box;
-    min-height:44px; margin:0; padding:8px 12px; border-radius:10px;
-    border-inline-start:3px solid transparent; cursor:pointer;
+.st-key-sidebar_navigation [data-testid="stButton"] button {
+    min-height:44px; justify-content:flex-start; text-align:left; border-radius:10px; padding-inline:12px;
 }
-.st-key-workspace_page label[data-baseweb="radio"] > div:first-child {
-    position:absolute; opacity:0; pointer-events:none;
-}
-.st-key-workspace_page label[data-baseweb="radio"]:hover {background:rgba(29,122,120,.07);}
-.st-key-workspace_page label[data-baseweb="radio"]:has(input:checked) {
-    background:rgba(29,122,120,.13); border-inline-start-color:#1D7A78;
-}
-.st-key-workspace_page label[data-baseweb="radio"]:has(input:checked) p {font-weight:700;}
-.st-key-workspace_page label[data-baseweb="radio"]:has(input:focus-visible) {
-    outline:2px solid #1D7A78; outline-offset:-2px;
+.st-key-sidebar_navigation [data-testid="stButton"] button[kind="tertiary"]:hover {
+    background:rgba(29,122,120,.09);
 }
 .eyebrow {text-transform:uppercase;letter-spacing:1.5px;font-size:11px;font-weight:700;margin-bottom:4px;}
 .subtle {font-size:14px;}
@@ -476,11 +465,15 @@ with st.sidebar:
         "Revenue": "bar_chart",
         "Account": "person",
     }
-    page = st.radio(
-        "Workspace", list(navigation_icons),
-        format_func=lambda name: f":material/{navigation_icons[name]}:  {name}",
-        label_visibility="collapsed", key="workspace_page",
-    )
+    page = st.session_state.setdefault("workspace_page", "Overview")
+    with st.container(key="sidebar_navigation", gap="xxsmall"):
+        for name, icon in navigation_icons.items():
+            st.button(
+                name, icon=f":material/{icon}:", width="stretch",
+                type="primary" if name == page else "tertiary",
+                key=f"sidebar_nav_{name.lower()}",
+                on_click=st.session_state.update, args=({"workspace_page": name},),
+            )
     st.divider()
     if public_demo:
         st.caption("Public demo · fictional data")
