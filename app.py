@@ -36,6 +36,23 @@ html, body, [class*="css"] {font-family:'DM Sans',sans-serif;}
 h1,h2,h3 {font-family:'Manrope',sans-serif;}
 div[data-testid="stMetric"] {border:1px solid color-mix(in srgb, currentColor 22%, transparent);padding:16px 18px;border-radius:14px;box-shadow:0 4px 14px #17324d08;}
 .brand {font-family:Manrope,sans-serif;font-size:24px;font-weight:800;letter-spacing:-.7px;}
+.st-key-workspace_page [role="radiogroup"] {gap:4px;}
+.st-key-workspace_page label[data-baseweb="radio"] {
+    position:relative; display:flex; align-items:center; width:100%; box-sizing:border-box;
+    min-height:44px; margin:0; padding:8px 12px; border-radius:10px;
+    border-inline-start:3px solid transparent; cursor:pointer;
+}
+.st-key-workspace_page label[data-baseweb="radio"] > div:first-child {
+    position:absolute; opacity:0; pointer-events:none;
+}
+.st-key-workspace_page label[data-baseweb="radio"]:hover {background:rgba(29,122,120,.07);}
+.st-key-workspace_page label[data-baseweb="radio"]:has(input:checked) {
+    background:rgba(29,122,120,.13); border-inline-start-color:#1D7A78;
+}
+.st-key-workspace_page label[data-baseweb="radio"]:has(input:checked) p {font-weight:700;}
+.st-key-workspace_page label[data-baseweb="radio"]:has(input:focus-visible) {
+    outline:2px solid #1D7A78; outline-offset:-2px;
+}
 .eyebrow {text-transform:uppercase;letter-spacing:1.5px;font-size:11px;font-weight:700;margin-bottom:4px;}
 .subtle {font-size:14px;}
 div[data-testid="stForm"] {padding:18px;border:1px solid color-mix(in srgb, currentColor 22%, transparent);border-radius:14px;}
@@ -441,9 +458,6 @@ with account_slot:
 with st.sidebar:
     st.markdown('<div class="brand">StayWise<span>.</span></div>', unsafe_allow_html=True)
     st.caption("Short-stay rental studio")
-    st.divider()
-    page = st.radio("Workspace", ["Overview", "Bookings", "Calendar", "Market", "Revenue", "Account"],
-                    label_visibility="collapsed", key="workspace_page")
     property_ids = [p["id"] for p in properties]
     if st.session_state.get("selected_property_id") not in property_ids:
         demo_home = next((p for p in properties if p["name"] == DEMO_PROPERTY_NAME), None)
@@ -451,17 +465,29 @@ with st.sidebar:
     active_property_id = st.selectbox("Rental property", property_ids,
                                       format_func=lambda pid: next(p["name"] for p in properties if p["id"] == pid),
                                       key="selected_property_id")
-    st.divider()
     active_property = next(p for p in properties if p["id"] == active_property_id)
-    st.markdown(f"**{active_property['name']}**")
     st.caption(active_property.get("area") or "Add a location in property settings")
+    st.divider()
+    navigation_icons = {
+        "Overview": "dashboard",
+        "Bookings": "book_online",
+        "Calendar": "calendar_month",
+        "Market": "travel_explore",
+        "Revenue": "bar_chart",
+        "Account": "person",
+    }
+    page = st.radio(
+        "Workspace", list(navigation_icons),
+        format_func=lambda name: f":material/{navigation_icons[name]}:  {name}",
+        label_visibility="collapsed", key="workspace_page",
+    )
+    st.divider()
     if public_demo:
-        st.info("Public walkthrough · session-only fictional details · guest records disabled", icon="🧪")
+        st.caption("Public demo · fictional data")
     elif auth_user:
         st.caption(f"Private Supabase account · {auth_user['email']}")
     else:
         st.caption("Private local database")
-    st.caption("EUR · English")
 
 settings = {**settings, "property_name": active_property["name"], "property_area": active_property["area"],
             "bedrooms": str(active_property["bedrooms"]), "capacity": str(active_property["capacity"]),
