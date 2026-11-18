@@ -5,7 +5,7 @@ pandas==2.3.3
 openpyxl==3.1.5
 reportlab==4.4.4
 psycopg[binary]==3.3.9
-Authlib==1.9.1
+Authlib==1.9.6
 httpx==0.28.1
 # Security-patched transitive overrides used by Streamlit's runtime:
 Pillow==13.0.0
