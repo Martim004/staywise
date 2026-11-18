@@ -210,6 +210,11 @@ def init_db() -> None:
             month INTEGER PRIMARY KEY, occupancy_percent REAL NOT NULL, nightly_rate REAL NOT NULL
         );
         """)
+        property_columns = {row["name"] for row in conn.execute("PRAGMA table_info(properties)")}
+        if "checkin_time" not in property_columns:
+            conn.execute("ALTER TABLE properties ADD COLUMN checkin_time TEXT")
+        if "checkout_time" not in property_columns:
+            conn.execute("ALTER TABLE properties ADD COLUMN checkout_time TEXT")
         reservation_columns = {row["name"] for row in conn.execute("PRAGMA table_info(reservations)")}
         if "property_id" not in reservation_columns:
             conn.execute("ALTER TABLE reservations ADD COLUMN property_id INTEGER REFERENCES properties(id)")
@@ -375,6 +380,20 @@ def update_property(property_id: int, item: dict[str, Any]) -> None:
         conn.execute("""UPDATE properties SET name=:name,area=:area,bedrooms=:bedrooms,capacity=:capacity,
             latitude=:latitude,longitude=:longitude,airbnb_url=:airbnb_url,booking_url=:booking_url WHERE id=:id""",
             {**item, "id": property_id})
+
+
+def update_property_stay_hours(
+    property_id: int, checkin_time: time | None, checkout_time: time | None
+) -> None:
+    checkin = checkin_time.isoformat(timespec="minutes") if checkin_time is not None else None
+    checkout = checkout_time.isoformat(timespec="minutes") if checkout_time is not None else None
+    if _cloud_user():
+        _pg_write("""UPDATE public.staywise_properties
+            SET checkin_time=%s,checkout_time=%s WHERE id=%s""", (checkin, checkout, property_id))
+        return
+    with connect() as conn:
+        conn.execute("UPDATE properties SET checkin_time=?,checkout_time=? WHERE id=?",
+                     (checkin, checkout, property_id))
 
 
 def delete_property(property_id: int) -> None:
