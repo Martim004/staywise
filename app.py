@@ -295,6 +295,8 @@ def revenue_chart_svg(values: dict[date, float], description: str) -> str:
 def load_postgres_snapshot() -> tuple[pd.DataFrame, dict] | None:
     return load_latest_snapshot()
 
+BLOCK_DATES_QUESTION = "How do I block dates?"
+
 STAYWISE_HELP = {
     "How do I add a property?": (
         "Open **Overview → Manage your rental portfolio**, enter the property details, "
@@ -315,7 +317,7 @@ STAYWISE_HELP = {
         "If another guest arrives that day, choose a time before the property's check-in time. "
         "Open **Calendar** and select the relevant month to see or complete the task."
     ),
-    "How do I block dates?": (
+    BLOCK_DATES_QUESTION: (
         "Open **Bookings → Block dates**, choose the start and end dates, and submit. "
         "The end date is excluded. Editing blocked dates is available outside the public demo."
     ),
@@ -333,6 +335,62 @@ STAYWISE_HELP = {
 }
 
 
+def save_property_block(start: date, end: date, reason: str) -> None:
+    if READ_ONLY:
+        raise ValueError("Blocking dates is unavailable in the public demo.")
+    if end <= start:
+        raise ValueError("End date must be after the start date.")
+    property_reservations, property_blocks, _ = get_property_workspace_data(active_property_id)
+    if any(
+        date_ranges_overlap(start, end, date.fromisoformat(r["checkin"]), date.fromisoformat(r["checkout"]))
+        for r in property_reservations if r["status"] in {"confirmed", "completed"}
+    ):
+        raise ValueError("These dates overlap an active reservation.")
+    if any(
+        date_ranges_overlap(start, end, date.fromisoformat(b["start_date"]), date.fromisoformat(b["end_date"]))
+        for b in property_blocks
+    ):
+        raise ValueError("These dates overlap an existing blocked period.")
+    add_blocked_dates(start.isoformat(), end.isoformat(), reason, active_property_id)
+
+
+def open_block_dates_tab() -> None:
+    st.session_state["workspace_page"] = "Bookings"
+    st.session_state["_open_block_dates_tab"] = True
+
+
+def render_block_dates_help() -> None:
+    if READ_ONLY:
+        st.button("Open Block dates", on_click=open_block_dates_tab)
+        return
+
+    prefix = f"help_block_{active_property_id}"
+    if st.session_state.pop(f"{prefix}_saved", False):
+        st.success("Dates blocked.")
+    if not st.checkbox("Block dates now", key=f"{prefix}_show"):
+        return
+
+    st.write(f"Property: {active_property['name']}")
+    start = st.date_input("Start date", key=f"{prefix}_start")
+    end = st.date_input("End date (first available day)", value=date.today() + timedelta(days=1),
+                        key=f"{prefix}_end")
+    reason = st.text_input("Reason (optional)", max_chars=2000, key=f"{prefix}_reason")
+    if end <= start:
+        st.error("End date must be after the start date.")
+    else:
+        nights = (end - start).days
+        st.write(f"Block {nights} {'night' if nights == 1 else 'nights'}, from {start:%d %b %Y} "
+                 f"through {end - timedelta(days=1):%d %b %Y}. The block ends on {end:%d %b %Y}.")
+    if st.button("Confirm block", disabled=end <= start, key=f"{prefix}_confirm"):
+        try:
+            save_property_block(start, end, reason)
+        except ValueError as exc:
+            st.error(str(exc))
+        else:
+            st.session_state[f"{prefix}_saved"] = True
+            st.rerun()
+
+
 def render_staywise_assistant() -> None:
     with st.container(key="staywise_chat_launcher"):
         with st.popover(" ", icon=":material/smart_toy:", help="Open StayWise help"):
@@ -348,6 +406,8 @@ def render_staywise_assistant() -> None:
             answer = STAYWISE_HELP.get(question)
             if answer:
                 st.markdown(answer)
+            if question == BLOCK_DATES_QUESTION:
+                render_block_dates_help()
 
 
 if st.session_state.pop("_staywise_open_account", False):
@@ -669,7 +729,10 @@ elif page == "Bookings":
     else:
         st.info("No upcoming check-outs for this property.")
 
-    tab_add, tab_import, tab_block, tab_list = st.tabs(["Add booking", "Import CSV", "Block dates", "All bookings"])
+    default_tab = "Block dates" if st.session_state.pop("_open_block_dates_tab", False) else None
+    tab_add, tab_import, tab_block, tab_list = st.tabs(
+        ["Add booking", "Import CSV", "Block dates", "All bookings"], default=default_tab,
+    )
     with tab_add:
         with st.form("new_booking", clear_on_submit=True):
             c1,c2,c3 = st.columns(3)
@@ -725,15 +788,11 @@ elif page == "Bookings":
             reason = c3.text_input("Reason")
             block_submit = st.form_submit_button("Block dates", disabled=READ_ONLY)
         if block_submit:
-            if block_end <= block_start:
-                st.error("End date must be after the start date.")
-            elif any(date_ranges_overlap(block_start, block_end, date.fromisoformat(r["checkin"]), date.fromisoformat(r["checkout"])) for r in reservations if r["status"] in {"confirmed","completed"}):
-                st.error("These dates overlap an active reservation.")
-            elif any(date_ranges_overlap(block_start, block_end, date.fromisoformat(b["start_date"]), date.fromisoformat(b["end_date"])) for b in blocks):
-                st.error("These dates overlap an existing blocked period.")
+            try:
+                save_property_block(block_start, block_end, reason)
+            except ValueError as exc:
+                st.error(str(exc))
             else:
-                add_blocked_dates(block_start.isoformat(),block_end.isoformat(),reason,active_property_id)
-                st.success("Dates blocked.")
                 st.rerun()
         if blocks:
             for b in blocks:
