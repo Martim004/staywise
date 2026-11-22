@@ -766,7 +766,7 @@ def property_stay_time(field: str) -> time | None:
 
 
 if READ_ONLY:
-    st.warning("Public walkthrough: property profiles stay in this browser session. Use fictional property details only. Guest records, CSV uploads, and booking edits are disabled.", icon="🔒")
+    st.warning("Public walkthrough: property profiles stay in this browser session. Use fictional property details only. Guest records and booking edits are disabled.", icon="🔒")
 
 
 if page == "Account":
