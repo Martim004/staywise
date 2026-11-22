@@ -23,7 +23,7 @@ from staywise.database import (add_blocked_dates, add_comparable, add_property, 
                                save_user_profile, set_authenticated_user, update_property, update_property_stay_hours,
                                set_comparable_selected)
 from staywise.imports import export_csv, parse_booking_csv, template_csv
-from staywise.inside_airbnb import LISBON_LISTINGS_URL, SOURCE_PAGE, listings_within_radius
+from staywise.inside_airbnb import LISTINGS_URL_BY_CITY, SOURCE_PAGE, area_with_city, city_for_area, listings_within_radius
 from staywise.postgres_store import database_urls, load_latest_snapshot, save_latest_snapshot
 from staywise.reports import build_revenue_workbook
 
@@ -91,6 +91,47 @@ DEMO_PROPERTY_ALIASES = {
 }
 
 
+def seed_fictional_property(property_id: int, city: str, bedrooms: int, capacity: int, latitude: float, longitude: float) -> None:
+    """Give a newly added home fictional bookings, a block, and map-ready comps."""
+    today = date.today()
+    guest_names = ["Alex Example", "Jamie Sample", "Taylor Demo", "Morgan Fiction", "Riley Sample"]
+    stay_number = 0
+    for month in range(1, 13):
+        month_start = date(today.year, month, 1)
+        month_days = calendar.monthrange(today.year, month)[1]
+        for offset in range(0, month_days, 5):
+            checkin = month_start + timedelta(days=offset)
+            checkout = checkin + timedelta(days=min(3, month_days - offset))
+            stay_number += 1
+            add_reservation({
+                "guest_name": guest_names[stay_number % len(guest_names)],
+                "email": f"guest{stay_number}@example.test", "phone": "+351 900 000 000",
+                "checkin": checkin.isoformat(), "checkout": checkout.isoformat(),
+                "guests": min(2, capacity), "nightly_rate": 150 if month in {6, 7, 8, 9} else 112,
+                "status": "completed" if checkout <= today else "confirmed",
+                "source": "Airbnb (fictional sample)",
+                "notes": "Fictional sample booking for demonstration; not a real guest.",
+                "property_id": property_id,
+            })
+    blocked_start = today + timedelta(days=70)
+    add_blocked_dates(blocked_start.isoformat(), (blocked_start + timedelta(days=3)).isoformat(),
+                      "Sample owner stay · fictional", property_id)
+    city_label = "Porto" if city == "Porto" else "Lisbon"
+    for name, distance, rate, dlat, dlon in [
+        ("Fictional apartment with balcony", 0.4, 138, 0.0030, 0.0020),
+        ("Fictional renovated home", 0.8, 152, -0.0040, 0.0030),
+        ("Fictional courtyard stay", 1.1, 145, 0.0020, -0.0080),
+    ]:
+        add_comparable({
+            "name": name, "area": f"{city_label} · fictional sample",
+            "bedrooms": bedrooms, "capacity": capacity, "distance_km": distance,
+            "nightly_rate": rate, "observed_date": today.isoformat(), "url": "",
+            "notes": "Fictional comparison for demonstration; not a real listing.",
+            "selected": 1, "property_id": property_id,
+            "latitude": latitude + dlat, "longitude": longitude + dlon,
+        })
+
+
 def ensure_public_demo_example() -> None:
     """Create the fictional Campo example and its demo records in this session's DB."""
     homes = get_properties()
@@ -152,20 +193,23 @@ def ensure_public_demo_example() -> None:
 
 auth_configured = auth_is_configured()
 auth_user = current_user() if auth_configured else None
-set_authenticated_user(auth_user["id"] if auth_user else None)
-public_demo = is_demo_mode() and auth_user is None
 local_development = os.getenv("STAYWISE_LOCAL_MODE", "").strip().lower() in {"1", "true", "yes"}
-if not auth_user and not public_demo and not local_development:
+# Google sign-in is required in deployment, but any verified Google account is allowed.
+public_demo = False
+if not local_development and not auth_configured:
     st.markdown('<div class="brand">StayWise<span>.</span></div>', unsafe_allow_html=True)
-    if not auth_configured:
-        st.title("Private sign-in is not configured")
-        st.error("This deployment is locked because Google sign-in is not configured.")
-        st.stop()
-    st.title("Sign in to StayWise")
-    st.write("Your rental portfolio is private to your account. Continue with Google to open it.")
+    st.title("Sign-in is temporarily unavailable")
+    st.error("Google sign-in is not configured, so rental information is locked.")
+    st.stop()
+if not auth_user and not local_development:
+    st.markdown('<div class="brand">StayWise<span>.</span></div>', unsafe_allow_html=True)
+    st.title("Welcome to StayWise")
+    st.write("Sign in with Google to open your private portfolio and fictional Campo de Ourique example.")
     if st.button("Continue with Google", type="primary"):
         sign_in()
     st.stop()
+
+set_authenticated_user(auth_user["id"] if auth_user else None)
 
 try:
     db_scope = auth_user["id"] if auth_user else ("demo" if public_demo else "local")
@@ -203,7 +247,8 @@ if not properties:
     with st.form("first_demo_property", clear_on_submit=True):
         p1, p2, p3 = st.columns(3)
         new_name = p1.text_input("Property name *", placeholder="e.g. Lisbon City Apartment")
-        new_area = p2.text_input("Area / neighborhood", placeholder="e.g. Campo de Ourique, Lisbon")
+        new_area = p2.text_input("Neighborhood", placeholder="e.g. Campo de Ourique")
+        new_city = st.selectbox("City", ["Lisbon", "Porto"], key="first_property_city")
         new_bedrooms = p3.number_input("Bedrooms", min_value=0, max_value=30, value=2)
         p1, p2, p3 = st.columns(3)
         new_capacity = p1.number_input("Guest capacity", min_value=1, max_value=100, value=4)
@@ -216,9 +261,11 @@ if not properties:
             if not new_name.strip():
                 st.error("Enter a name for this property.")
             else:
-                new_id = add_property({"name":new_name.strip(),"area":new_area.strip(),"bedrooms":int(new_bedrooms),
+                new_area = area_with_city(new_area, new_city)
+                new_id = add_property({"name":new_name.strip(),"area":new_area,"bedrooms":int(new_bedrooms),
                     "capacity":int(new_capacity),"latitude":float(new_lat),"longitude":float(new_lon),
                     "airbnb_url":new_airbnb.strip(),"booking_url":new_booking.strip()})
+                seed_fictional_property(new_id, new_city, int(new_bedrooms), int(new_capacity), float(new_lat), float(new_lon))
                 st.session_state["pending_property_id"] = new_id
                 st.rerun()
     st.stop()
@@ -302,8 +349,8 @@ def revenue_chart_svg(values: dict[date, float], description: str) -> str:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def load_postgres_snapshot() -> tuple[pd.DataFrame, dict] | None:
-    return load_latest_snapshot()
+def load_postgres_snapshot(city: str) -> tuple[pd.DataFrame, dict] | None:
+    return load_latest_snapshot(city)
 
 BLOCK_DATES_QUESTION = "How do I block dates?"
 
@@ -601,7 +648,7 @@ elif page == "Overview":
     cols = st.columns(2)
     cols[0].metric("Blocked date ranges", len(blocks))
     cols[1].metric("Manual comparable median", money(market["median_rate"]) if market["median_rate"] is not None else "—")
-    st.info("Use the Calendar to see availability by day, or Market to compare nearby Lisbon Airbnb listings by radius.")
+    st.info("Use the Calendar to see availability by day, or Market to compare nearby Lisbon or Porto Airbnb listings by radius.")
     with st.expander("Check-in and check-out hours"):
         st.caption("Set the usual local hours for this property. Select which hours to save.")
         with st.form(f"property_stay_hours_{active_property_id}"):
@@ -618,11 +665,12 @@ elif page == "Overview":
                 )
                 st.rerun()
     with st.expander("Manage your rental portfolio"):
-        st.caption("Save each home separately, then switch between them from the property selector. Airbnb and Booking.com links open your listing; StayWise does not sync accounts directly.")
+        st.caption("Save each home separately, then switch between them from the property selector. New homes get fictional bookings, blocked dates, and comparison pins for demonstration.")
+        new_city = st.selectbox("City for the new rental", ["Lisbon", "Porto"], key="add_property_city")
         with st.form("add_property", clear_on_submit=True):
             p1,p2,p3 = st.columns(3)
             new_name = p1.text_input("Property name *")
-            new_area = p2.text_input("Area / neighborhood")
+            new_area = p2.text_input("Neighborhood")
             new_bedrooms = p3.number_input("Bedrooms", min_value=0, max_value=30, value=2, key="new_property_bedrooms")
             p1,p2,p3 = st.columns(3)
             new_capacity = p1.number_input("Guest capacity", min_value=1, max_value=100, value=4, key="new_property_capacity")
@@ -635,14 +683,16 @@ elif page == "Overview":
                 if not new_name.strip():
                     st.error("Enter a name for this property.")
                 else:
-                    new_id = add_property({"name":new_name.strip(),"area":new_area.strip(),"bedrooms":int(new_bedrooms),
+                    new_area = area_with_city(new_area, new_city)
+                    new_id = add_property({"name":new_name.strip(),"area":new_area,"bedrooms":int(new_bedrooms),
                         "capacity":int(new_capacity),"latitude":float(new_lat),"longitude":float(new_lon),
                         "airbnb_url":new_airbnb.strip(),"booking_url":new_booking.strip()})
+                    seed_fictional_property(new_id, new_city, int(new_bedrooms), int(new_capacity), float(new_lat), float(new_lon))
                     st.session_state["pending_property_id"] = new_id
                     st.rerun()
         st.divider()
         st.subheader("Remove this rental")
-        if READ_ONLY and active_property["name"] == DEMO_PROPERTY_NAME:
+        if active_property["name"] == DEMO_PROPERTY_NAME:
             st.info("This built-in fictional Campo de Ourique example is kept in every demo session.")
         else:
             st.warning("Removing this property permanently deletes its reservations and guest contact details, blocked dates, and market comparisons.")
@@ -928,12 +978,13 @@ elif page == "Calendar":
 elif page == "Market":
     st.markdown('<div class="eyebrow">Know your neighborhood</div>', unsafe_allow_html=True)
     st.title("Market & property")
-    st.markdown('<p class="subtle">Compare nearby Lisbon Airbnb listings from Inside Airbnb, filtered by your chosen radius and property size. You can also add manually observed Booking.com or other listings.</p>', unsafe_allow_html=True)
+    st.markdown('<p class="subtle">Compare nearby Lisbon or Porto Airbnb listings from Inside Airbnb, filtered by your chosen radius and property size. You can also add manually observed Booking.com or other listings.</p>', unsafe_allow_html=True)
     with st.expander("Property and search location", expanded=not settings.get("property_area")):
         with st.form("property_settings"):
             c1,c2,c3 = st.columns(3)
             property_name = c1.text_input("Property name", active_property["name"])
-            area = c2.text_input("Area / neighborhood", settings.get("property_area",""))
+            area = c2.text_input("Neighborhood", settings.get("property_area",""))
+            property_city = c3.selectbox("City", ["Lisbon", "Porto"], index=1 if city_for_area(settings.get("property_area","")) == "Porto" else 0)
             bedrooms = c3.number_input("Bedrooms", min_value=0, max_value=30, value=int(settings.get("bedrooms",2)))
             c1,c2,c3 = st.columns(3)
             capacity = c1.number_input("Guest capacity", min_value=1, max_value=100, value=int(settings.get("capacity",4)))
@@ -942,9 +993,9 @@ elif page == "Market":
             c1,c2 = st.columns(2)
             airbnb_url = c1.text_input("Airbnb listing URL", active_property.get("airbnb_url", ""))
             booking_url = c2.text_input("Booking.com listing URL", active_property.get("booking_url", ""))
-            st.caption("The default map point is approximate for Campo de Ourique. Set your home's coordinates for the most accurate radius search.")
+            st.caption("Choose Lisbon or Porto and set accurate coordinates for the radius search.")
             if st.form_submit_button("Save property settings", type="primary", disabled=READ_ONLY):
-                update_property(active_property_id, {"name":property_name,"area":area,"bedrooms":int(bedrooms),"capacity":int(capacity),
+                update_property(active_property_id, {"name":property_name,"area":area_with_city(area, property_city),"bedrooms":int(bedrooms),"capacity":int(capacity),
                                "latitude":float(latitude),"longitude":float(longitude),"airbnb_url":airbnb_url,"booking_url":booking_url})
                 st.success("Property settings saved."); st.rerun()
 
@@ -963,7 +1014,9 @@ elif page == "Market":
         load_inside_airbnb.clear()
         load_postgres_snapshot.clear()
     if st.session_state.get("inside_airbnb_loaded"):
-        with st.spinner("Loading the latest configured Lisbon snapshot from Inside Airbnb…"):
+        market_city = city_for_area(active_property.get("area", ""))
+        market_source_url = LISTINGS_URL_BY_CITY[market_city]
+        with st.spinner(f"Loading the latest {market_city} snapshot from Inside Airbnb…"):
             try:
                 storage_info = None
                 storage_error = None
@@ -972,16 +1025,16 @@ elif page == "Market":
                 saved = None
                 if not refresh_requested and any(configured_urls.values()):
                     try:
-                        saved = load_postgres_snapshot()
+                        saved = load_postgres_snapshot(market_city)
                     except Exception as exc:
                         storage_error = str(exc)
                 if saved:
                     source_data, storage_info = saved
                 else:
-                    source_data = load_inside_airbnb(LISBON_LISTINGS_URL)
+                    source_data = load_inside_airbnb(market_source_url)
                     if any(configured_urls.values()):
                         try:
-                            storage_info = save_latest_snapshot(source_data, LISBON_LISTINGS_URL, "Lisbon")
+                            storage_info = save_latest_snapshot(source_data, market_source_url, market_city)
                             load_postgres_snapshot.clear()
                         except Exception as exc:
                             storage_error = str(exc)
@@ -991,11 +1044,11 @@ elif page == "Market":
                     radius_km, int(settings.get("bedrooms",2)) if bedrooms_only else None,
                     int(settings.get("capacity",4)) if capacity_match else None,
                 )
-                st.caption(f"Source snapshot: 19 September 2026 · {len(nearby):,} matches · distances are straight-line from your saved coordinates. Prices and availability are source data, not live quotes.")
+                st.caption(f"Source snapshot: September 2026 · {len(nearby):,} matches · distances are straight-line from your saved coordinates. Prices and availability are source data, not live quotes.")
                 if storage_info:
                     db_mb = (storage_info.get("database_bytes") or 0) / (1024 ** 2)
                     payload_mb = storage_info.get("payload_bytes", 0) / (1024 ** 2)
-                    st.success(f"Full Lisbon snapshot saved in {storage_info['provider']} PostgreSQL · {storage_info['listing_count']:,} listings · {payload_mb:.1f} MiB of listing data · database currently {db_mb:.1f} MiB. Only the latest snapshot is retained.")
+                    st.success(f"Full {market_city} snapshot saved in {storage_info['provider']} PostgreSQL · {storage_info['listing_count']:,} listings · {payload_mb:.1f} MiB of listing data · database currently {db_mb:.1f} MiB. Only the latest snapshot is retained.")
                 elif storage_error:
                     st.warning(f"The comparison data loaded for this session, but could not be saved to PostgreSQL: {storage_error}")
                 else:
@@ -1072,7 +1125,7 @@ elif page == "Market":
                 else:
                     st.info("No Airbnb listings matched this radius and property filter. Try a wider radius or turn off a size filter.")
             except Exception as exc:
-                st.error(f"Could not load the Inside Airbnb Lisbon snapshot: {exc}")
+                st.error(f"Could not load the Inside Airbnb snapshot for this city: {exc}")
                 st.caption("Check the source page for current data files or try again later.")
     else:
         st.caption("Load the public listing snapshot when you want to refresh your comparison. The download is cached for 24 hours.")
