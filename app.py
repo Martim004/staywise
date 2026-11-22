@@ -658,24 +658,21 @@ elif page == "Overview":
                     st.rerun()
         st.divider()
         st.subheader("Remove this rental")
-        if active_property["name"] == DEMO_PROPERTY_NAME:
-            st.info("This built-in fictional Campo de Ourique example is kept in every demo session.")
-        else:
-            st.warning("Removing this property permanently deletes its reservations and guest contact details, blocked dates, and market comparisons.")
-            last_local_property = len(properties) == 1 and not READ_ONLY
-            if last_local_property:
-                st.caption("Add another property before removing this one; the local app must keep at least one rental.")
-            confirm_delete = st.checkbox("I understand that this property's data will be permanently deleted.",
-                                         key=f"confirm_delete_property_{active_property_id}")
-            if st.button("Delete selected property", type="secondary",
-                         disabled=not confirm_delete or last_local_property):
-                delete_property(active_property_id)
-                remaining_properties = get_properties()
-                if remaining_properties:
-                    st.session_state["pending_property_id"] = remaining_properties[0]["id"]
-                else:
-                    st.session_state.pop("selected_property_id", None)
-                st.rerun()
+        st.warning("Removing this property permanently deletes its reservations, guest contact details, blocked dates, and market comparisons.")
+        last_local_property = len(properties) == 1 and not READ_ONLY
+        if last_local_property:
+            st.caption("Add another property before removing this one; the local app must keep at least one rental.")
+        confirm_delete = st.checkbox("I understand that this rental and its related data will be permanently deleted.",
+                                     key=f"confirm_delete_property_{active_property_id}")
+        if st.button("Delete selected property", type="secondary",
+                     disabled=not confirm_delete or last_local_property):
+            delete_property(active_property_id)
+            remaining_properties = get_properties()
+            if remaining_properties:
+                st.session_state["pending_property_id"] = remaining_properties[0]["id"]
+            else:
+                st.session_state.pop("selected_property_id", None)
+            st.rerun()
     link_cols = st.columns(2)
     if active_property.get("airbnb_url"):
         link_cols[0].link_button("Open Airbnb listing", active_property["airbnb_url"])
