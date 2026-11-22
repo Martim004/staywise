@@ -879,6 +879,8 @@ elif page == "Overview":
         if delete_col.button(
             "Delete house", type="primary", width="stretch", key="confirm_property_delete"
         ):
+            # Dialogs rerun independently; restore the verified account's Postgres context.
+            set_authenticated_user(auth_user["id"] if auth_user else None)
             delete_property(active_property_id)
             remaining_properties = get_properties()
             if remaining_properties:
