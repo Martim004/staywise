@@ -378,10 +378,8 @@ if not properties:
         p1, p2, p3 = st.columns(3)
         new_name = p1.text_input("Property name *", placeholder="e.g. Lisbon City Apartment")
         new_bedrooms = p3.number_input("Bedrooms", min_value=0, max_value=30, value=2)
-        p1, p2, p3 = st.columns(3)
-        new_capacity = p1.number_input("Guest capacity", min_value=1, max_value=100, value=4)
-        new_lat = p2.number_input("Latitude", min_value=-90.0, max_value=90.0, value=38.719, format="%.6f")
-        new_lon = p3.number_input("Longitude", min_value=-180.0, max_value=180.0, value=-9.165, format="%.6f")
+        new_capacity = st.number_input("Guest capacity", min_value=1, max_value=100, value=4)
+        st.caption("The map uses an approximate city location. You can refine the map pin later in property settings.")
         p1, p2 = st.columns(2)
         new_airbnb = p1.text_input("Airbnb listing URL")
         new_booking = p2.text_input("Booking.com listing URL")
@@ -389,11 +387,10 @@ if not properties:
             if not new_name.strip():
                 st.error("Enter a name for this property.")
             else:
-                if new_city == "Porto" and float(new_lat) < 40:
-                    new_lat, new_lon = 41.1579, -8.6291
+                new_lat, new_lon = (41.1579, -8.6291) if new_city == "Porto" else (38.719, -9.165)
                 new_area = area_with_city(new_area, new_city)
                 new_id = add_property({"name":new_name.strip(),"area":new_area,"bedrooms":int(new_bedrooms),
-                    "capacity":int(new_capacity),"latitude":float(new_lat),"longitude":float(new_lon),
+                    "capacity":int(new_capacity),"latitude":new_lat,"longitude":new_lon,
                     "airbnb_url":new_airbnb.strip(),"booking_url":new_booking.strip()})
                 seed_fictional_property(new_id, new_city, int(new_bedrooms), int(new_capacity), float(new_lat), float(new_lon))
                 st.session_state["pending_property_id"] = new_id
@@ -946,10 +943,8 @@ elif page == "Overview":
             p1,p2,p3 = st.columns(3)
             new_name = p1.text_input("Property name *")
             new_bedrooms = p3.number_input("Bedrooms", min_value=0, max_value=30, value=2, key="new_property_bedrooms")
-            p1,p2,p3 = st.columns(3)
-            new_capacity = p1.number_input("Guest capacity", min_value=1, max_value=100, value=4, key="new_property_capacity")
-            new_lat = p2.number_input("Latitude", min_value=-90.0, max_value=90.0, value=38.719, format="%.6f", key="new_property_lat")
-            new_lon = p3.number_input("Longitude", min_value=-180.0, max_value=180.0, value=-9.165, format="%.6f", key="new_property_lon")
+            new_capacity = st.number_input("Guest capacity", min_value=1, max_value=100, value=4, key="new_property_capacity")
+            st.caption("The map uses an approximate city location. You can refine the map pin later in property settings.")
             p1,p2 = st.columns(2)
             new_airbnb = p1.text_input("Airbnb listing URL")
             new_booking = p2.text_input("Booking.com listing URL")
@@ -957,11 +952,10 @@ elif page == "Overview":
                 if not new_name.strip():
                     st.error("Enter a name for this property.")
                 else:
-                    if new_city == "Porto" and float(new_lat) < 40:
-                        new_lat, new_lon = 41.1579, -8.6291
+                    new_lat, new_lon = (41.1579, -8.6291) if new_city == "Porto" else (38.719, -9.165)
                     new_area = area_with_city(add_area, new_city)
                     new_id = add_property({"name":new_name.strip(),"area":new_area,"bedrooms":int(new_bedrooms),
-                        "capacity":int(new_capacity),"latitude":float(new_lat),"longitude":float(new_lon),
+                        "capacity":int(new_capacity),"latitude":new_lat,"longitude":new_lon,
                         "airbnb_url":new_airbnb.strip(),"booking_url":new_booking.strip()})
                     seed_fictional_property(new_id, new_city, int(new_bedrooms), int(new_capacity), float(new_lat), float(new_lon))
                     st.session_state["pending_property_id"] = new_id
