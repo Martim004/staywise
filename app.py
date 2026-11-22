@@ -33,6 +33,49 @@ LISTINGS_URL_BY_CITY = {
     "Porto": "https://data.insideairbnb.com/portugal/norte/porto/2026-09-19/data/listings.csv.gz",
 }
 
+NEIGHBORHOODS_URL_BY_CITY = {
+    "Lisbon": "https://data.insideairbnb.com/portugal/lisbon/lisbon/2026-09-19/visualisations/neighbourhoods.csv",
+    "Porto": "https://data.insideairbnb.com/portugal/norte/porto/2026-09-19/visualisations/neighbourhoods.csv",
+}
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_city_neighborhoods(city: str) -> list[str]:
+    """Read neighborhood names from the city's Inside Airbnb geo-filter file."""
+    if city not in NEIGHBORHOODS_URL_BY_CITY:
+        raise ValueError("Choose Lisbon or Porto.")
+    frame = pd.read_csv(NEIGHBORHOODS_URL_BY_CITY[city], dtype=str)
+    frame.columns = [str(column).strip().lstrip("\\ufeff") for column in frame.columns]
+    names_by_key = {column.casefold(): column for column in frame.columns}
+    name_column = next(
+        (names_by_key[key] for key in ("neighbourhood", "neighborhood", "name") if key in names_by_key),
+        None,
+    )
+    if name_column is None:
+        name_column = next(
+            (column for key, column in names_by_key.items()
+             if "neighbourhood" in key and "group" not in key),
+            None,
+        )
+    if name_column is None:
+        raise ValueError("The Inside Airbnb file did not include a neighborhood name column.")
+    neighborhoods = sorted(
+        {str(value).strip() for value in frame[name_column].dropna() if str(value).strip()},
+        key=str.casefold,
+    )
+    if not neighborhoods:
+        raise ValueError("The Inside Airbnb file contained no neighborhood names.")
+    return neighborhoods
+
+def neighborhood_from_area(area: str | None) -> str:
+    """Remove the supported city suffix from a saved area for selector defaults."""
+    return re.sub(
+        r"[,\\s]*(?:Lisbon|Lisboa|Porto|Oporto)(?:,\\s*Portugal)?\\s*$",
+        "",
+        str(area or "").strip(),
+        flags=re.IGNORECASE,
+    ).strip(" ,")
+
+
 def city_for_area(area: str | None) -> str:
     """Identify which supported market snapshot to use for a property."""
     return "Porto" if "porto" in str(area or "").casefold() or "oporto" in str(area or "").casefold() else "Lisbon"
@@ -200,11 +243,19 @@ if not properties:
              "This public walkthrough keeps fictional details in your browser session; guest records stay disabled." if public_demo
              else "Create your first rental profile to start a private portfolio. Your data is saved in your Supabase account.")
     st.markdown(f'<p class="subtle">{intro}</p>', unsafe_allow_html=True)
+    new_city = st.selectbox("City", list(LISTINGS_URL_BY_CITY), key="first_property_city")
+    try:
+        first_neighborhoods = load_city_neighborhoods(new_city)
+        first_current_neighborhood = neighborhood_from_area(st.session_state.get("first_property_neighborhood", ""))
+        if first_current_neighborhood and first_current_neighborhood not in first_neighborhoods:
+            first_neighborhoods = [first_current_neighborhood, *first_neighborhoods]
+        new_area = st.selectbox("Neighborhood", first_neighborhoods, key="first_property_neighborhood")
+    except Exception:
+        st.warning("Inside Airbnb neighborhood options could not be loaded right now. You can enter the neighborhood manually.")
+        new_area = st.text_input("Neighborhood", placeholder="e.g. Bonfim", key=f"first_property_neighborhood_manual_{new_city}")
     with st.form("first_demo_property", clear_on_submit=True):
         p1, p2, p3 = st.columns(3)
         new_name = p1.text_input("Property name *", placeholder="e.g. Lisbon City Apartment")
-        new_area = p2.text_input("Neighborhood", placeholder="e.g. Bonfim")
-        new_city = st.selectbox("City", list(LISTINGS_URL_BY_CITY), key="first_property_city")
         new_bedrooms = p3.number_input("Bedrooms", min_value=0, max_value=30, value=2)
         p1, p2, p3 = st.columns(3)
         new_capacity = p1.number_input("Guest capacity", min_value=1, max_value=100, value=4)
@@ -624,10 +675,15 @@ elif page == "Overview":
     with st.expander("Manage your rental portfolio"):
         st.caption("Save each home separately, then switch between them from the property selector. New homes get fictional bookings, blocked dates, and comparison pins for demonstration.")
         new_city = st.selectbox("City for the new rental", list(LISTINGS_URL_BY_CITY), key="add_property_city")
+        try:
+            add_neighborhoods = load_city_neighborhoods(new_city)
+            add_area = st.selectbox("Neighborhood", add_neighborhoods, key=f"add_property_neighborhood_{new_city}")
+        except Exception:
+            st.warning("Inside Airbnb neighborhood options could not be loaded right now. You can enter the neighborhood manually.")
+            add_area = st.text_input("Neighborhood", key=f"add_property_neighborhood_manual_{new_city}")
         with st.form("add_property", clear_on_submit=True):
             p1,p2,p3 = st.columns(3)
             new_name = p1.text_input("Property name *")
-            new_area = p2.text_input("Neighborhood")
             new_bedrooms = p3.number_input("Bedrooms", min_value=0, max_value=30, value=2, key="new_property_bedrooms")
             p1,p2,p3 = st.columns(3)
             new_capacity = p1.number_input("Guest capacity", min_value=1, max_value=100, value=4, key="new_property_capacity")
@@ -642,7 +698,7 @@ elif page == "Overview":
                 else:
                     if new_city == "Porto" and float(new_lat) < 40:
                         new_lat, new_lon = 41.1579, -8.6291
-                    new_area = area_with_city(new_area, new_city)
+                    new_area = area_with_city(add_area, new_city)
                     new_id = add_property({"name":new_name.strip(),"area":new_area,"bedrooms":int(new_bedrooms),
                         "capacity":int(new_capacity),"latitude":float(new_lat),"longitude":float(new_lon),
                         "airbnb_url":new_airbnb.strip(),"booking_url":new_booking.strip()})
@@ -934,11 +990,33 @@ elif page == "Market":
     st.title("Market & property")
     st.markdown('<p class="subtle">Compare nearby Lisbon or Porto Airbnb listings from Inside Airbnb, filtered by your chosen radius and property size. You can also add manually observed Booking.com or other listings.</p>', unsafe_allow_html=True)
     with st.expander("Property and search location", expanded=not settings.get("property_area")):
+        property_city = st.selectbox(
+            "City",
+            list(LISTINGS_URL_BY_CITY),
+            index=list(LISTINGS_URL_BY_CITY).index(city_for_area(settings.get("property_area", ""))),
+            key=f"edit_property_city_{active_property_id}",
+        )
+        current_neighborhood = neighborhood_from_area(settings.get("property_area", ""))
+        try:
+            edit_neighborhoods = load_city_neighborhoods(property_city)
+            if current_neighborhood and property_city == city_for_area(settings.get("property_area", "")) and current_neighborhood not in edit_neighborhoods:
+                edit_neighborhoods = [current_neighborhood, *edit_neighborhoods]
+            area = st.selectbox(
+                "Neighborhood",
+                edit_neighborhoods,
+                index=edit_neighborhoods.index(current_neighborhood) if current_neighborhood in edit_neighborhoods else 0,
+                key=f"edit_property_neighborhood_{active_property_id}_{property_city}",
+            )
+        except Exception:
+            st.warning("Inside Airbnb neighborhood options could not be loaded right now. You can enter the neighborhood manually.")
+            area = st.text_input(
+                "Neighborhood",
+                value=current_neighborhood if property_city == city_for_area(settings.get("property_area", "")) else "",
+                key=f"edit_property_neighborhood_manual_{active_property_id}_{property_city}",
+            )
         with st.form("property_settings"):
             c1,c2,c3 = st.columns(3)
             property_name = c1.text_input("Property name", active_property["name"])
-            area = c2.text_input("Neighborhood", settings.get("property_area",""))
-            property_city = c3.selectbox("City", ["Lisbon", "Porto"], index=1 if city_for_area(settings.get("property_area","")) == "Porto" else 0)
             bedrooms = c3.number_input("Bedrooms", min_value=0, max_value=30, value=int(settings.get("bedrooms",2)))
             c1,c2,c3 = st.columns(3)
             capacity = c1.number_input("Guest capacity", min_value=1, max_value=100, value=int(settings.get("capacity",4)))
