@@ -529,7 +529,7 @@ def load_market_snapshot(city: str, force_refresh: bool = False) -> tuple[pd.Dat
     return source_data, storage_info, storage_error
 
 
-@st.cache_data(ttl=900, max_entries=12, show_spinner=False)
+@st.cache_data(ttl=600, max_entries=4, show_spinner=False)
 def load_nearby_airbnb(city: str, latitude: float, longitude: float, radius_km: float,
                        bedrooms: int | None, capacity: int | None,
                        force_refresh: bool = False) -> tuple[pd.DataFrame, dict | None, str | None]:
@@ -1286,7 +1286,7 @@ elif page == "Market":
                     m5.metric("Suggested nightly rate", money(suggested), help="Filtered Airbnb median adjusted by your chosen percentage")
                     st.caption("Rate guide: the nearby median is a simple benchmark. It does not account for date-specific demand, quality, fees, or Booking.com inventory.")
                     st.subheader("Nearby competition map")
-                    st.caption(f"{len(nearby):,} matching Airbnb listings within {radius_km:.1f} km. The map shows up to 600 closest pins; the table and CSV cover the full result.")
+                    st.caption(f"{len(nearby):,} matching Airbnb listings within {radius_km:.1f} km. The map shows up to 300 closest pins; the table and CSV cover the full result.")
                     home_lat, home_lon = float(settings["latitude"]), float(settings["longitude"])
                     competition_map = folium.Map(location=[home_lat, home_lon], zoom_start=14, tiles="OpenStreetMap",
                         control_scale=True, scrollWheelZoom=True, prefer_canvas=True)
@@ -1304,7 +1304,7 @@ elif page == "Market":
                     }"""
                     airbnb_group = MarkerCluster(name="Airbnb listings", options={"maxClusterRadius":44,"spiderfyOnMaxZoom":True,
                         "showCoverageOnHover":False,"zoomToBoundsOnClick":True}, icon_create_function=cluster_icon).add_to(competition_map)
-                    map_listings = nearby.nsmallest(600, "distance_km")
+                    map_listings = nearby.nsmallest(300, "distance_km")
                     for _, listing in map_listings.iterrows():
                         name = escape(str(listing.get("name") or "Airbnb listing"))
                         listing_id = str(listing.get("id", "")).split(".")[0]
@@ -1351,8 +1351,8 @@ elif page == "Market":
                     price_frame = nearby["price"].dropna().clip(upper=nearby["price"].quantile(.95))
                     st.bar_chart(price_frame.value_counts(bins=12, sort=False).sort_index(), height=190, color="#1D7A78")
                     visible = [c for c in ["name","neighbourhood_cleansed","room_type","bedrooms","accommodates","price","review_scores_rating","number_of_reviews","availability_365","distance_km","listing_url"] if c in nearby]
-                    st.caption(f"Showing the {min(500, len(nearby)):,} closest listings below; download the CSV for all {len(nearby):,} results.")
-                    st.dataframe(nearby[visible].head(500).rename(columns={"name":"Listing","neighbourhood_cleansed":"Neighborhood","room_type":"Room type","bedrooms":"Beds","accommodates":"Guests","price":"Nightly price (€)","review_scores_rating":"Rating","number_of_reviews":"Reviews","availability_365":"Available days / 365","distance_km":"Distance (km)","listing_url":"Listing URL"}).round(2), width="stretch", hide_index=True)
+                    st.caption(f"Showing the {min(300, len(nearby)):,} closest listings below; download the CSV for all {len(nearby):,} results.")
+                    st.dataframe(nearby[visible].head(300).rename(columns={"name":"Listing","neighbourhood_cleansed":"Neighborhood","room_type":"Room type","bedrooms":"Beds","accommodates":"Guests","price":"Nightly price (€)","review_scores_rating":"Rating","number_of_reviews":"Reviews","availability_365":"Available days / 365","distance_km":"Distance (km)","listing_url":"Listing URL"}).round(2), width="stretch", hide_index=True)
                     st.download_button("Download filtered Airbnb comparables CSV", nearby[visible].to_csv(index=False).encode("utf-8"), "staywise-lisbon-airbnb-comparables.csv", "text/csv")
                 else:
                     st.info("No Airbnb listings matched this radius and property filter. Try a wider radius or turn off a size filter.")
