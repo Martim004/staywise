@@ -261,6 +261,8 @@ if not properties:
             if not new_name.strip():
                 st.error("Enter a name for this property.")
             else:
+                if new_city == "Porto" and float(new_lat) < 40:
+                    new_lat, new_lon = 41.1579, -8.6291
                 new_area = area_with_city(new_area, new_city)
                 new_id = add_property({"name":new_name.strip(),"area":new_area,"bedrooms":int(new_bedrooms),
                     "capacity":int(new_capacity),"latitude":float(new_lat),"longitude":float(new_lon),
@@ -683,6 +685,8 @@ elif page == "Overview":
                 if not new_name.strip():
                     st.error("Enter a name for this property.")
                 else:
+                    if new_city == "Porto" and float(new_lat) < 40:
+                        new_lat, new_lon = 41.1579, -8.6291
                     new_area = area_with_city(new_area, new_city)
                     new_id = add_property({"name":new_name.strip(),"area":new_area,"bedrooms":int(new_bedrooms),
                         "capacity":int(new_capacity),"latitude":float(new_lat),"longitude":float(new_lon),
