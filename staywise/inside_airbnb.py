@@ -72,10 +72,10 @@ def listings_within_radius(
 ) -> pd.DataFrame:
     """Filter Airbnb listings by distance and optional bedroom/capacity match."""
     result = clean_listing_data(frame)
-    result["distance_km"] = result.apply(
-        lambda row: distance_km(latitude, longitude, row["latitude"], row["longitude"]),
-        axis=1,
-    )
+    result["distance_km"] = [
+        distance_km(latitude, longitude, listing_latitude, listing_longitude)
+        for listing_latitude, listing_longitude in zip(result["latitude"], result["longitude"])
+    ]
     result = result[result["distance_km"] <= radius_km]
     if bedrooms is not None and "bedrooms" in result:
         result = result[result["bedrooms"].isna() | (result["bedrooms"] == bedrooms)]
