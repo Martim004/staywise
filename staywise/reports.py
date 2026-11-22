@@ -279,7 +279,7 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
         Reference(monthly_ws, min_col=1, min_row=2, max_row=13)
     )
     revenue_chart.series[0].graphicalProperties.solidFill = TEAL
-    summary.add_chart(revenue_chart, "D2")
+    summary.add_chart(revenue_chart, "A16")
 
     output = BytesIO()
     wb.save(output)
