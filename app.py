@@ -107,6 +107,11 @@ div[data-testid="stMetric"] {border:1px solid color-mix(in srgb, currentColor 22
 }
 .eyebrow {text-transform:uppercase;letter-spacing:1.5px;font-size:11px;font-weight:700;margin-bottom:4px;}
 .subtle {font-size:14px;}
+.st-key-overview_remove_property {border:1px solid #f0c7c4;background:#fff8f7;border-radius:16px;padding:16px 18px;margin:18px 0;}
+.st-key-overview_remove_property [data-testid="stButton"] button {background:#b42318!important;border:1px solid #b42318!important;color:#fff!important;font-weight:700;min-height:48px;}
+.st-key-overview_remove_property [data-testid="stButton"] button:hover {background:#8f1d16!important;border-color:#8f1d16!important;color:#fff!important;}
+.st-key-confirm_property_delete [data-testid="stButton"] button {background:#b42318!important;border:1px solid #b42318!important;color:#fff!important;font-weight:700;}
+.st-key-confirm_property_delete [data-testid="stButton"] button:hover {background:#8f1d16!important;border-color:#8f1d16!important;color:#fff!important;}
 div[data-testid="stForm"] {padding:18px;border:1px solid color-mix(in srgb, currentColor 22%, transparent);border-radius:14px;}
 .revenue-hero {position:relative;overflow:hidden;background:radial-gradient(circle at 88% 16%,#286b63 0,transparent 28%),linear-gradient(120deg,#17324D,#145F5D);color:#fff;border-radius:24px;padding:28px 32px;margin:10px 0 18px;box-shadow:0 14px 34px #17324d20;}
 .revenue-hero:after {content:'';position:absolute;width:210px;height:210px;border:1px solid #ffffff26;border-radius:50%;right:8%;top:-118px;box-shadow:0 0 0 28px #ffffff09,0 0 0 58px #ffffff07;pointer-events:none;}
@@ -866,6 +871,37 @@ elif page == "Overview":
     cols[0].metric("Blocked date ranges", len(blocks))
     cols[1].metric("Manual comparable median", money(market["median_rate"]) if market["median_rate"] is not None else "—")
     st.info("Use the Calendar to see availability by day, or Market to compare nearby Lisbon or Porto Airbnb listings by radius.")
+
+    with st.container(key="overview_remove_property"):
+        st.markdown("**Remove this house**")
+        st.caption("Permanently remove the selected house and all of its related records.")
+        @st.dialog("Confirm house removal")
+        def confirm_house_removal():
+            st.warning(
+                f"Delete **{active_property['name']}**? This permanently removes its bookings, "
+                "guest contact details, blocked dates, and market comparisons."
+            )
+            cancel_col, delete_col = st.columns(2)
+            cancel_col.button("Cancel", width="stretch", key="cancel_property_delete")
+            if delete_col.button(
+                "Delete house", type="primary", width="stretch", key="confirm_property_delete"
+            ):
+                delete_property(active_property_id)
+                remaining_properties = get_properties()
+                if remaining_properties:
+                    st.session_state["pending_property_id"] = remaining_properties[0]["id"]
+                else:
+                    st.session_state.pop("selected_property_id", None)
+                st.session_state.pop("inside_airbnb_loaded_for", None)
+                st.rerun()
+
+        if st.button(
+            "Remove this house",
+            type="secondary",
+            width="stretch",
+            key="remove_property_overview",
+        ):
+            confirm_house_removal()
     with st.expander("Check-in and check-out hours"):
         st.caption("Set the usual local hours for this property. Select which hours to save.")
         with st.form(f"property_stay_hours_{active_property_id}"):
@@ -915,20 +951,6 @@ elif page == "Overview":
                     st.session_state["pending_property_id"] = new_id
                     st.rerun()
         st.divider()
-        st.subheader("Remove this rental")
-        st.warning("Removing this property permanently deletes its reservations, guest contact details, blocked dates, and market comparisons.")
-        last_local_property = False
-        confirm_delete = st.checkbox("I understand that this rental and its related data will be permanently deleted.",
-                                     key=f"confirm_delete_property_{active_property_id}")
-        if st.button("Delete selected property", type="secondary",
-                     disabled=not confirm_delete or last_local_property):
-            delete_property(active_property_id)
-            remaining_properties = get_properties()
-            if remaining_properties:
-                st.session_state["pending_property_id"] = remaining_properties[0]["id"]
-            else:
-                st.session_state.pop("selected_property_id", None)
-            st.rerun()
     link_cols = st.columns(2)
     if active_property.get("airbnb_url"):
         link_cols[0].link_button("Open Airbnb listing", active_property["airbnb_url"])
