@@ -90,8 +90,9 @@ One-time setup:
    server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
    ```
 
-4. On the first signed-in visit, StayWise creates its account tables and RLS policies using `SUPABASE_DATABASE_URL`. The profile, properties, bookings, guest contacts, calendar blocks, comparables, and settings are saved in Supabase. Any verified Google account can access the app; every account receives its own isolated fictional example portfolio.
-5. Google OAuth may still be in testing mode. In that mode Google only permits accounts listed as OAuth test users. To let your professor sign in without adding their email as a tester, publish the OAuth consent screen for external users; Google may require verification depending on configured scopes.
+4. On the first signed-in visit, StayWise creates its account tables and RLS policies using SUPABASE_DATABASE_URL. The profile, properties, bookings, guest contacts, calendar blocks, comparables, and settings are saved in Supabase. Any Google account that completes sign-in may use StayWise; each account receives its own isolated fictional example portfolio.
+5. If Google's OAuth consent screen is still in Testing mode, Google permits only the listed test users. To allow your professor or other Google accounts to sign in without adding each as a tester, publish the external consent screen. Google may require verification depending on the scopes and usage.
+
 
 For local Google sign-in, create `.streamlit/secrets.toml` with the same `[auth]` values, use the local callback URI above, and set `SUPABASE_DATABASE_URL` to the Supabase connection string. The file is ignored by Git. Existing local SQLite data is kept local; StayWise does not automatically upload guest records during account setup.
 
