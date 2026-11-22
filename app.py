@@ -3,6 +3,7 @@ from __future__ import annotations
 import calendar
 import math
 import os
+import re
 from datetime import date, datetime, time, timedelta
 from html import escape
 
@@ -23,9 +24,27 @@ from staywise.database import (add_blocked_dates, add_comparable, add_property, 
                                save_user_profile, set_authenticated_user, update_property, update_property_stay_hours,
                                set_comparable_selected)
 from staywise.imports import export_csv, parse_booking_csv, template_csv
-from staywise.inside_airbnb import LISTINGS_URL_BY_CITY, SOURCE_PAGE, area_with_city, city_for_area, listings_within_radius
+from staywise.inside_airbnb import LISBON_LISTINGS_URL, SOURCE_PAGE, listings_within_radius
 from staywise.postgres_store import database_urls, load_latest_snapshot, save_latest_snapshot
 from staywise.reports import build_revenue_workbook
+
+LISTINGS_URL_BY_CITY = {
+    "Lisbon": LISBON_LISTINGS_URL,
+    "Porto": "https://data.insideairbnb.com/portugal/norte/porto/2026-09-19/data/listings.csv.gz",
+}
+
+def city_for_area(area: str | None) -> str:
+    """Identify which supported market snapshot to use for a property."""
+    return "Porto" if "porto" in str(area or "").casefold() or "oporto" in str(area or "").casefold() else "Lisbon"
+
+
+def area_with_city(neighborhood: str, city: str) -> str:
+    """Save a neighborhood together with its supported city."""
+    if city not in LISTINGS_URL_BY_CITY:
+        raise ValueError("StayWise currently supports properties in Lisbon and Porto.")
+    cleaned = re.sub(r"[,\\s]*(?:Lisbon|Lisboa|Porto|Oporto)(?:,\\s*Portugal)?\\s*$", "", neighborhood.strip(), flags=re.IGNORECASE).strip(" ,")
+    return f"{cleaned}, {city}" if cleaned else city
+
 
 
 st.set_page_config(page_title="StayWise | Rental studio", page_icon="🏡", layout="wide")
