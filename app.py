@@ -16,7 +16,7 @@ from streamlit_folium import st_folium
 
 from staywise.calculations import competitor_summary, date_ranges_overlap, validate_reservation
 from staywise.auth import auth_is_configured, current_user, sign_in, sign_out
-from staywise.database import (add_blocked_dates, add_comparable, add_property, add_reservation, add_reservations_batch,
+from staywise.database import (add_blocked_dates, add_comparable, add_property, add_reservation,
                                complete_checkout_cleaning, get_checkout_cleanings, schedule_checkout_cleaning,
                                delete_blocked_dates, delete_comparable, delete_property, delete_reservation,
                                get_blocked_dates, get_comparables, get_property_workspace_data,
@@ -227,7 +227,13 @@ def seed_fictional_property(property_id: int, city: str, bedrooms: int, capacity
             checkin += timedelta(days=5)
 
     if reservation_batch:
-        add_reservations_batch(reservation_batch)
+        try:
+            from staywise.database import add_reservations_batch
+            add_reservations_batch(reservation_batch)
+        except ImportError:
+            # Compatibility with an app container that has not refreshed the helper module yet.
+            for sample_reservation in reservation_batch:
+                add_reservation(sample_reservation)
 
     if not any("fictional owner block" in str(item.get("reason", "")).casefold() for item in blocks):
         block_start = today + timedelta(days=35)
