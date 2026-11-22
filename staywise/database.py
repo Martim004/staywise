@@ -444,6 +444,59 @@ def add_reservation(item: dict[str, Any]) -> int:
         return int(cur.lastrowid)
 
 
+def add_reservations_batch(items: list[dict[str, Any]]) -> int:
+    """Validate and insert a property's fictional sample stays in one database batch."""
+    if not items:
+        return 0
+    property_id = int(items[0].get("property_id") or 0)
+    if not property_id or any(int(item.get("property_id") or 0) != property_id for item in items):
+        raise ValueError("A batch must contain reservations for one property.")
+    if _cloud_user():
+        if not _pg_property_owned(property_id):
+            raise ValueError("This property is not part of your account.")
+    elif not any(int(prop["id"]) == property_id for prop in get_properties()):
+        raise ValueError("Add a property before adding reservations.")
+
+    existing = get_reservations(property_id)
+    blocks = get_blocked_dates(property_id)
+    accepted: list[dict[str, Any]] = []
+    for raw in items:
+        item = {**raw, "property_id": property_id}
+        errors = validate_reservation(item, [*existing, *accepted], blocks)
+        if errors:
+            raise ValueError(" ".join(errors))
+        accepted.append(item)
+    params = [
+        (property_id, item["guest_name"], item.get("email", ""), item.get("phone", ""),
+         item["checkin"], item["checkout"], item["guests"], item["nightly_rate"],
+         item.get("status", "confirmed"), item.get("source", "Direct"), item.get("notes", ""))
+        for item in accepted
+    ]
+    sql = """INSERT INTO {table}
+        (property_id,guest_name,email,phone,checkin,checkout,guests,nightly_rate,status,source,notes)
+        VALUES ({marks})"""
+    if _cloud_user():
+        with _pg_connect(user_id=_cloud_user()) as conn:
+            with conn.cursor() as cursor:
+                cursor.executemany(sql.format(
+                    table="public.staywise_reservations",
+                    marks="%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s",
+                ), params)
+    else:
+        with connect() as conn:
+            conn.executemany(sql.format(
+                table="reservations",
+                marks="?,?,?,?,?,?,?,?,?,?,?",
+            ), [
+                (item["guest_name"], item.get("email", ""), item.get("phone", ""),
+                 item["checkin"], item["checkout"], item["guests"], item["nightly_rate"],
+                 item.get("status", "confirmed"), item.get("source", "Direct"),
+                 item.get("notes", ""), property_id)
+                for item in accepted
+            ])
+    return len(accepted)
+
+
 def delete_reservation(reservation_id: int) -> None:
     if _cloud_user():
         _pg_write("DELETE FROM public.staywise_reservations WHERE id=%s", (reservation_id,))
