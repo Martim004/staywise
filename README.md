@@ -1,12 +1,12 @@
 # StayWise
 
-StayWise helps a short-term rental owner manage multiple homes and their stays, compare nearby Lisbon Airbnb listings, view competitors on a map, and track recorded nightly revenue.
+StayWise helps a short-term rental owner manage multiple homes and their stays, compare nearby Lisbon or Porto Airbnb listings, view competitors on a map, and track recorded nightly revenue.
 
 > **Course-project note:** the linked team-project guidance asks teams to extend a member's solo project. StayWise is intentionally standalone while an exception is requested. Confirm the exception before presenting this repository as a course-compliant submission.
 
-## Demo and team
+## Sign-in demo and team
 
-- Public demo: https://staywise-martim004.streamlit.app
+- App: https://staywise-martim004.streamlit.app
 - Team members and student numbers: **Add all names and student numbers before course submission.**
 - Repository: https://github.com/Martim004/staywise
 
@@ -48,7 +48,7 @@ python -m unittest discover -s tests
 - Google sign-in and an account page; signed-in portfolios are stored in Supabase Postgres and separated with PostgreSQL Row Level Security (RLS).
 - Add or remove rentals from the portfolio; removing a rental also removes its linked reservations, guest contacts, blocked dates, and comparisons. The built-in fictional demo home is protected from deletion.
 - Color-coded month calendar showing booked, blocked, and available nights.
-- Lisbon Airbnb market comparisons from the public Inside Airbnb listings snapshot, with a configurable radius, bedroom and capacity filters, price distribution, ratings, reviews, availability, and listing-level details.
+- Lisbon and Porto Airbnb market comparisons from the public Inside Airbnb snapshots, with a configurable radius, bedroom and capacity filters, price distribution, ratings, reviews, availability, and listing-level details.
 - An OpenStreetMap street view centered on the selected home, with clustered competitors, hover names, and listing popups that link to Airbnb pages.
 - Manual comparable records for Booking.com or other sources, since Inside Airbnb publishes Airbnb data only.
 - Revenue views for a chosen night, a chosen month, and current-year-to-date. Revenue is actual booked gross nightly revenue, not a projection.
@@ -90,8 +90,8 @@ One-time setup:
    server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
    ```
 
-4. On the first signed-in visit, StayWise creates its account tables and RLS policies using `SUPABASE_DATABASE_URL`. The profile, properties, bookings, guest contacts, calendar blocks, comparables, and settings are saved in Supabase. Public demo visitors remain anonymous and see isolated fictional data.
-5. If Google's consent screen is in testing mode, add the intended Google accounts as test users in Google Cloud Console.
+4. On the first signed-in visit, StayWise creates its account tables and RLS policies using `SUPABASE_DATABASE_URL`. The profile, properties, bookings, guest contacts, calendar blocks, comparables, and settings are saved in Supabase. Any verified Google account can access the app; every account receives its own isolated fictional example portfolio.
+5. Google OAuth may still be in testing mode. In that mode Google only permits accounts listed as OAuth test users. To let your professor sign in without adding their email as a tester, publish the OAuth consent screen for external users; Google may require verification depending on configured scopes.
 
 For local Google sign-in, create `.streamlit/secrets.toml` with the same `[auth]` values, use the local callback URI above, and set `SUPABASE_DATABASE_URL` to the Supabase connection string. The file is ignored by Git. Existing local SQLite data is kept local; StayWise does not automatically upload guest records during account setup.
 
