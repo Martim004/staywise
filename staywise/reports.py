@@ -225,8 +225,8 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
         ledger.append([
             night,
             night.strftime("%A"),
-            f'=SUMIFS(Reservations!$I$2:$I\${reservation_last_row},Reservations!$E$2:$E\${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F\${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K\${reservation_last_row},"confirmed")+SUMIFS(Reservations!$I$2:$I\${reservation_last_row},Reservations!$E$2:$E\${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F\${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K\${reservation_last_row},"completed")',
-            f'=IF(OR(COUNTIFS(Reservations!$E$2:$E\${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F\${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K\${reservation_last_row},"confirmed")>0,COUNTIFS(Reservations!$E$2:$E\${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F\${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K\${reservation_last_row},"completed")>0),"Booked",IF(COUNTIFS(Reservations!$E$2:$E\${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F\${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K\${reservation_last_row},"cancelled")>0,"Cancelled","Not booked"))',
+            f'=SUMIFS(Reservations!$I$2:$I${reservation_last_row},Reservations!$E$2:$E${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K${reservation_last_row},"confirmed")+SUMIFS(Reservations!$I$2:$I${reservation_last_row},Reservations!$E$2:$E${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K${reservation_last_row},"completed")',
+            f'=IF(OR(COUNTIFS(Reservations!$E$2:$E${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K${reservation_last_row},"confirmed")>0,COUNTIFS(Reservations!$E$2:$E${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K${reservation_last_row},"completed")>0),"Booked",IF(COUNTIFS(Reservations!$E$2:$E${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K${reservation_last_row},"cancelled")>0,"Cancelled","Not booked"))',
         ])
     ledger_table = Table(displayName="DailyLedgerTable", ref=f"A1:D{ledger.max_row}")
     ledger_table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium4", showRowStripes=True)
@@ -241,8 +241,8 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
         period_nights = max(0, (min(next_month, end_exclusive) - month_start).days)
         monthly_ws.append([
             month_start.strftime("%B"), month_start, next_month, period_nights,
-            f'=COUNTIFS(\'Daily Ledger\'!$A$2:$A\${ledger.max_row},">="&B{row_number},\'Daily Ledger\'!$A$2:$A\${ledger.max_row},"<"&C{row_number},\'Daily Ledger\'!$D$2:$D\${ledger.max_row},"Booked")',
-            f'=SUMIFS(\'Daily Ledger\'!$C$2:$C\${ledger.max_row},\'Daily Ledger\'!$A$2:$A\${ledger.max_row},">="&B{row_number},\'Daily Ledger\'!$A$2:$A\${ledger.max_row},"<"&C{row_number})',
+            f'=COUNTIFS(\'Daily Ledger\'!$A$2:$A${ledger.max_row},">="&B{row_number},\'Daily Ledger\'!$A$2:$A${ledger.max_row},"<"&C{row_number},\'Daily Ledger\'!$D$2:$D${ledger.max_row},"Booked")',
+            f'=SUMIFS(\'Daily Ledger\'!$C$2:$C${ledger.max_row},\'Daily Ledger\'!$A$2:$A${ledger.max_row},">="&B{row_number},\'Daily Ledger\'!$A$2:$A${ledger.max_row},"<"&C{row_number})',
             f'=IF(E{row_number}=0,0,F{row_number}/E{row_number})',
             f'=IF(D{row_number}=0,0,E{row_number}/D{row_number})',
         ])
@@ -259,8 +259,8 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
         row_number = channels_ws.max_row + 1
         channels_ws.append([
             channel,
-            f'=COUNTIFS(Reservations!$L$2:$L$\${reservation_last_row},A{row_number},Reservations!$K$2:$K$\${reservation_last_row},"confirmed",Reservations!$G$2:$G$\${reservation_last_row},">0")+COUNTIFS(Reservations!$L$2:$L$\${reservation_last_row},A{row_number},Reservations!$K$2:$K$\${reservation_last_row},"completed",Reservations!$G$2:$G$\${reservation_last_row},">0")',
-            f'=SUMIFS(Reservations!$J$2:$J$\${reservation_last_row},Reservations!$L$2:$L$\${reservation_last_row},A{row_number})',
+            f'=COUNTIFS(Reservations!$L$2:$L$${reservation_last_row},A{row_number},Reservations!$K$2:$K$${reservation_last_row},"confirmed",Reservations!$G$2:$G$${reservation_last_row},">0")+COUNTIFS(Reservations!$L$2:$L$${reservation_last_row},A{row_number},Reservations!$K$2:$K$${reservation_last_row},"completed",Reservations!$G$2:$G$${reservation_last_row},">0")',
+            f'=SUMIFS(Reservations!$J$2:$J$${reservation_last_row},Reservations!$L$2:$L$${reservation_last_row},A{row_number})',
         ])
     channel_table = Table(displayName="ChannelSummaryTable", ref=f"A1:C{channels_ws.max_row}")
     channel_table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium4", showRowStripes=True)
