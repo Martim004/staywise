@@ -224,7 +224,7 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
             night,
             night.strftime("%A"),
             f'=SUMIFS(ReservationsTable[Nightly rate (€)],ReservationsTable[Check-in],"<="&A{row_number},ReservationsTable[Check-out],">"&A{row_number},ReservationsTable[Status],"confirmed")+SUMIFS(ReservationsTable[Nightly rate (€)],ReservationsTable[Check-in],"<="&A{row_number},ReservationsTable[Check-out],">"&A{row_number},ReservationsTable[Status],"completed")',
-            f'=IF(OR(COUNTIFS(ReservationsTable[Check-in],"<="&A{row_number},ReservationsTable[Check-out],">"&A{row_number},ReservationsTable[Status],"confirmed")>0,COUNTIFS(ReservationsTable[Check-in],"<="&A{row_number},ReservationsTable[Check-out],">"&A{row_number},ReservationsTable[Status],"completed")>0),"Booked",IF(COUNTIFS(ReservationsTable[Check-in],"<="&A{row_number},ReservationsTable[Check-out],">"&A{row_number},ReservationsTable[Status],"cancelled")>0,"Cancelled","Available"))',
+            f'=IF(OR(COUNTIFS(ReservationsTable[Check-in],"<="&A{row_number},ReservationsTable[Check-out],">"&A{row_number},ReservationsTable[Status],"confirmed")>0,COUNTIFS(ReservationsTable[Check-in],"<="&A{row_number},ReservationsTable[Check-out],">"&A{row_number},ReservationsTable[Status],"completed")>0),"Booked",IF(COUNTIFS(ReservationsTable[Check-in],"<="&A{row_number},ReservationsTable[Check-out],">"&A{row_number},ReservationsTable[Status],"cancelled")>0,"Cancelled" ,"Not booked"))',
         ])
     ledger_table = Table(displayName="DailyLedgerTable", ref=f"A1:D{ledger.max_row}")
     ledger_table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium4", showRowStripes=True)
