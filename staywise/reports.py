@@ -156,11 +156,14 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
         source = str(item.get("source") or "Other").strip() or "Other"
         earned = nights * rate if status in active_statuses else 0.0
         included.append((item, checkin, checkout, nights, rate, status, source, earned))
-        totals = channel_totals.setdefault(source, {"stays": 0, "revenue": 0.0})
+        channel_name = source.casefold()
+        channel = "Airbnb" if "airbnb" in channel_name else "Booking.com" if "booking" in channel_name else None
         if status in active_statuses:
             active_stays += 1
-            totals["stays"] += 1
-            totals["revenue"] += earned
+            if channel:
+                totals = channel_totals.setdefault(channel, {"stays": 0, "revenue": 0.0})
+                totals["stays"] += 1
+                totals["revenue"] += earned
         for day in days:
             if checkin <= day < checkout:
                 if status in active_statuses:
@@ -232,11 +235,24 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
     dashboard.row_dimensions[5].height = 23
     dashboard.row_dimensions[6].height = 25
     dashboard.row_dimensions[7].height = 22
-    dashboard.merge_cells("A8:L8")
-    dashboard["A8"] = "Monthly revenue and booking channel mix"
-    dashboard["A8"].font = Font(name="Aptos", size=11, bold=True, color=navy)
+    dashboard.merge_cells("A8:F8")
+    dashboard["A8"] = "Revenue by month"
+    dashboard["A8"].font = Font(name="Aptos Display", size=12, bold=True, color=navy)
     dashboard["A8"].alignment = Alignment(vertical="center")
+    dashboard.merge_cells("G8:L8")
+    dashboard["G8"] = "Channel comparison"
+    dashboard["G8"].font = Font(name="Aptos Display", size=12, bold=True, color=navy)
+    dashboard["G8"].alignment = Alignment(vertical="center")
+    dashboard.merge_cells("A9:F9")
+    dashboard["A9"] = "Gross nightly income from confirmed and completed stays, grouped by month."
+    dashboard["A9"].font = Font(name="Aptos", size=9, italic=True, color=muted)
+    dashboard["A9"].alignment = Alignment(wrap_text=True, vertical="center")
+    dashboard.merge_cells("G9:L9")
+    dashboard["G9"] = "Revenue from Airbnb and Booking.com stays only. Direct bookings are excluded from this comparison."
+    dashboard["G9"].font = Font(name="Aptos", size=9, italic=True, color=muted)
+    dashboard["G9"].alignment = Alignment(wrap_text=True, vertical="center")
     dashboard.row_dimensions[8].height = 25
+    dashboard.row_dimensions[9].height = 30
     for col in range(1, 13):
         dashboard.column_dimensions[get_column_letter(col)].width = 12
 
@@ -245,13 +261,16 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
         monthly_ws.append([date(year, month, 1).strftime("%B"), len(month_days), nights, revenue, nightly, occupancy])
 
     channel_ws.append(["Booking source", "Active stays", "Gross revenue (€)", "Share of revenue"])
-    sources = sorted(channel_totals, key=lambda name: (-channel_totals[name]["revenue"], name.casefold()))
-    if not sources:
-        sources = ["No recorded revenue"]
-    for source in sources:
+    # Keep the comparison focused on the two marketplaces requested. Direct and
+    # other channels remain included in overall revenue and booking details.
+    for source in ("Airbnb", "Booking.com"):
         totals = channel_totals.get(source, {"stays": 0, "revenue": 0.0})
         revenue = totals["revenue"]
-        channel_ws.append([_excel_safe(source), int(totals["stays"]), revenue, revenue / gross if gross else 0])
+        channel_ws.append([source, int(totals["stays"]), revenue, revenue / gross if gross else 0])
+    channel_ws["F1"] = "Scope note"
+    channel_ws["F2"] = "Direct/other bookings are omitted here; dashboard gross revenue includes all active channels."
+    channel_ws["F2"].alignment = Alignment(wrap_text=True, vertical="top")
+    channel_ws.column_dimensions["F"].width = 58
 
     daily_ws.append(["Night", "Weekday", "Gross revenue (€)", "Status"])
     for day in days:
@@ -276,38 +295,40 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
     monthly_chart = BarChart()
     monthly_chart.type = "col"
     monthly_chart.style = 10
-    monthly_chart.title = f"Gross revenue by month · {year}"
-    monthly_chart.y_axis.title = "EUR"
+    monthly_chart.title = f"Gross revenue · {year}"
+    monthly_chart.y_axis.title = "Revenue (€)"
     monthly_chart.x_axis.title = "Month"
-    monthly_chart.height, monthly_chart.width = 8, 13
+    monthly_chart.legend = None
+    monthly_chart.height, monthly_chart.width = 8.5, 13.2
     monthly_chart.add_data(Reference(monthly_ws, min_col=4, min_row=1, max_row=13), titles_from_data=True)
     monthly_chart.set_categories(Reference(monthly_ws, min_col=1, min_row=2, max_row=13))
     monthly_chart.series[0].graphicalProperties.solidFill = teal
-    dashboard.add_chart(monthly_chart, "A10")
+    dashboard.add_chart(monthly_chart, "A11")
 
     channel_chart = BarChart()
     channel_chart.type = "bar"
-    channel_chart.style = 11
-    channel_chart.title = "Revenue by booking source"
-    channel_chart.x_axis.title = "EUR"
-    channel_chart.y_axis.title = "Source"
-    channel_chart.height, channel_chart.width = 8, 13
+    channel_chart.style = 10
+    channel_chart.title = "Marketplace revenue"
+    channel_chart.x_axis.title = "Gross revenue (€)"
+    channel_chart.y_axis.title = "Channel"
+    channel_chart.legend = None
+    channel_chart.height, channel_chart.width = 8.5, 13.2
     channel_chart.add_data(
-        Reference(channel_ws, min_col=3, min_row=1, max_row=channel_ws.max_row),
+        Reference(channel_ws, min_col=3, min_row=1, max_row=3),
         titles_from_data=True,
     )
     channel_chart.set_categories(
-        Reference(channel_ws, min_col=1, min_row=2, max_row=channel_ws.max_row)
+        Reference(channel_ws, min_col=1, min_row=2, max_row=3)
     )
     channel_chart.series[0].graphicalProperties.solidFill = gold
-    dashboard.add_chart(channel_chart, "G10")
+    dashboard.add_chart(channel_chart, "G11")
     dashboard.freeze_panes = "A5"
     dashboard.sheet_properties.tabColor = teal
-    dashboard.merge_cells("A27:L27")
-    dashboard["A27"] = "Revenue totals below are saved as values for this download; re-download after changing the selected year or bookings."
-    dashboard["A27"].font = Font(name="Aptos", size=9, italic=True, color=muted)
-    dashboard["A27"].alignment = Alignment(wrap_text=True, vertical="center")
-    dashboard.row_dimensions[27].height = 28
+    dashboard.merge_cells("A29:L29")
+    dashboard["A29"] = "Revenue totals below are saved as values for this download; re-download after changing the selected year or bookings."
+    dashboard["A29"].font = Font(name="Aptos", size=9, italic=True, color=muted)
+    dashboard["A29"].alignment = Alignment(wrap_text=True, vertical="center")
+    dashboard.row_dimensions[29].height = 28
 
     # Format the clear, filter-friendly detail sheets without Excel table objects.
     for ws in (monthly_ws, channel_ws, daily_ws, reservations_ws):
