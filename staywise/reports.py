@@ -110,26 +110,6 @@ def build_excel_report(property_name: str, report: dict[str, Any], comparables: 
     summary.column_dimensions["A"].width = 30
     summary.column_dimensions["B"].width = 24
     summary.column_dimensions["C"].width = 58
-    # A single basic Excel column chart reads the populated monthly values.
-    # No worksheet formulas or Excel table objects are used in this workbook.
-    revenue_chart = BarChart()
-    revenue_chart.type = "col"
-    revenue_chart.style = 10
-    revenue_chart.title = "Gross revenue by month"
-    revenue_chart.y_axis.title = "EUR"
-    revenue_chart.x_axis.title = "Month"
-    revenue_chart.height = 8
-    revenue_chart.width = 16
-    revenue_chart.add_data(
-        Reference(monthly_ws, min_col=4, min_row=1, max_row=13),
-        titles_from_data=True,
-    )
-    revenue_chart.set_categories(
-        Reference(monthly_ws, min_col=1, min_row=2, max_row=13)
-    )
-    revenue_chart.series[0].graphicalProperties.solidFill = TEAL
-    summary.add_chart(revenue_chart, "D2")
-
     output = BytesIO()
     wb.save(output)
     return output.getvalue()
@@ -280,6 +260,26 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
     for row in reservations_ws.iter_rows(min_row=2):
         row[4].number_format = "dd mmm yyyy"
         row[5].number_format = "dd mmm yyyy"
+
+    # A single basic Excel column chart reads the populated monthly values.
+    # No worksheet formulas or Excel table objects are used in this workbook.
+    revenue_chart = BarChart()
+    revenue_chart.type = "col"
+    revenue_chart.style = 10
+    revenue_chart.title = "Gross revenue by month"
+    revenue_chart.y_axis.title = "EUR"
+    revenue_chart.x_axis.title = "Month"
+    revenue_chart.height = 8
+    revenue_chart.width = 16
+    revenue_chart.add_data(
+        Reference(monthly_ws, min_col=4, min_row=1, max_row=13),
+        titles_from_data=True,
+    )
+    revenue_chart.set_categories(
+        Reference(monthly_ws, min_col=1, min_row=2, max_row=13)
+    )
+    revenue_chart.series[0].graphicalProperties.solidFill = TEAL
+    summary.add_chart(revenue_chart, "D2")
 
     output = BytesIO()
     wb.save(output)
