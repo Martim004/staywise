@@ -116,131 +116,274 @@ def build_excel_report(property_name: str, report: dict[str, Any], comparables: 
 
 
 def build_revenue_workbook(property_name: str, year: int, reservations: list[dict[str, Any]], as_of: date) -> bytes:
-    """Create an owner-friendly, actuals-only revenue workbook for year-to-date."""
+    """Build an editable actuals workbook with formula-driven revenue dashboards."""
+    from openpyxl.chart import AreaChart, BarChart, DoughnutChart, Reference
+    from openpyxl.chart.label import DataLabelList
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+
     wb = Workbook()
+    wb.calculation.fullCalcOnLoad = True
+    wb.calculation.forceFullCalc = True
+    wb.calculation.calcMode = "auto"
+
     dashboard = wb.active
     dashboard.title = "Revenue Dashboard"
-    start, end = date(year, 1, 1), min(as_of, date(year, 12, 31))
-    booked = [r for r in reservations if r.get("status") in {"confirmed", "completed"}]
-    daily: dict[date, float] = {}
-    stays = []
-    for r in reservations:
-        checkin, checkout = date.fromisoformat(r["checkin"]), date.fromisoformat(r["checkout"])
-        clipped_start, clipped_end = max(checkin, start), min(checkout, end + timedelta(days=1))
-        nights = max(0, (clipped_end - clipped_start).days)
-        rate = float(r.get("nightly_rate") or 0)
-        revenue = nights * rate if r.get("status") in {"confirmed", "completed"} else 0.0
-        if nights:
-            stays.append((r, nights, revenue))
-        if revenue:
-            for offset in range(nights):
-                night = clipped_start + timedelta(days=offset)
-                daily[night] = daily.get(night, 0.0) + rate
-    monthly = [sum(value for day, value in daily.items() if day.month == month) for month in range(1, 13)]
-    total = sum(monthly)
-    booked_nights = sum(len([d for d in daily if d.month == month]) for month in range(1, 13))
-    dashboard.append(["STAYWISE  |  REVENUE DASHBOARD"])
-    dashboard.append([property_name])
-    dashboard.append([f"{year} year to date · through {end.isoformat()} · EUR · actual booked nightly revenue"])
-    dashboard.append([])
-    dashboard.append(["Key measure", "Value", "Definition"])
-    dashboard.append(["Gross revenue", total, "Confirmed or completed stay nights through the reporting date; cancelled stays excluded"])
-    dashboard.append(["Booked nights", booked_nights, "Unique nights with an active reservation"])
-    dashboard.append(["Active reservations", len([r for r in booked if date.fromisoformat(r["checkin"]) <= end and date.fromisoformat(r["checkout"]) > start]), "Confirmed or completed stays overlapping the reporting period"])
-    dashboard.append(["Average revenue per booked night", total / booked_nights if booked_nights else 0, "Gross revenue divided by booked nights"])
-    dashboard.append([])
-    dashboard.append(["Month", "Gross revenue (€)"])
-    for month in range(1, 13):
-        dashboard.append([date(year, month, 1).strftime("%B"), monthly[month - 1]])
-    chart = BarChart()
-    chart.type = "col"
-    chart.style = 10
-    chart.title = f"Monthly gross revenue · {year}"
-    chart.y_axis.title = "EUR"
-    chart.x_axis.title = "Month"
-    chart.height, chart.width = 8, 17
-    chart.add_data(Reference(dashboard, min_col=2, min_row=11, max_row=23), titles_from_data=True)
-    chart.set_categories(Reference(dashboard, min_col=1, min_row=12, max_row=23))
-    dashboard.add_chart(chart, "E5")
-    dashboard.freeze_panes = "A5"
-    dashboard.column_dimensions["A"].width = 34
-    dashboard.column_dimensions["B"].width = 22
-    dashboard.column_dimensions["C"].width = 92
-
     monthly_ws = wb.create_sheet("Monthly Summary")
-    monthly_ws.append(["Month", "Calendar days to date", "Booked nights", "Gross revenue (€)", "Average nightly revenue (€)"])
-    for month in range(1, 13):
-        month_start = date(year, month, 1)
-        month_end = date(year + (month == 12), month % 12 + 1, 1)
-        period_end = min(month_end, end + timedelta(days=1))
-        month_days = max(0, (period_end - month_start).days)
-        month_nights = sorted(day for day in daily if day.month == month)
-        revenue = monthly[month - 1]
-        monthly_ws.append([month_start.strftime("%B"), month_days, len(month_nights), revenue, revenue / len(month_nights) if month_nights else 0])
-
+    channels_ws = wb.create_sheet("Channel Summary")
     ledger = wb.create_sheet("Daily Ledger")
-    ledger.append(["Night", "Weekday", "Gross revenue (€)", "Status"])
-    for night in sorted(daily):
-        ledger.append([night, night.strftime("%A"), daily[night], "Booked"])
-
     detail = wb.create_sheet("Reservations")
-    detail.append(["Booking ID", "Guest", "Email", "Phone", "Check-in", "Check-out", "Nights in period", "Guests", "Nightly rate (€)", "Revenue in period (€)", "Status", "Source", "Notes"])
-    for r, nights, revenue in stays:
-        detail.append([r.get("id"), r.get("guest_name"), r.get("email"), r.get("phone"),
-                       date.fromisoformat(r["checkin"]), date.fromisoformat(r["checkout"]), nights,
-                       r.get("guests"), float(r.get("nightly_rate") or 0), revenue,
-                       r.get("status"), r.get("source"), r.get("notes")])
 
-    for ws in wb.worksheets:
+    start = date(year, 1, 1)
+    end = min(as_of, date(year, 12, 31))
+    end_exclusive = end + timedelta(days=1)
+    stays = []
+    for reservation in reservations:
+        try:
+            checkin = date.fromisoformat(str(reservation["checkin"]))
+            checkout = date.fromisoformat(str(reservation["checkout"]))
+            clipped_start = max(checkin, start)
+            clipped_end = min(checkout, end_exclusive)
+            nights = max(0, (clipped_end - clipped_start).days)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if nights:
+            stays.append((reservation, nights))
+
+    # The two hidden dates are the single reporting-period controls used by formulas.
+    dashboard["R1"] = "Report period controls"
+    dashboard["R2"] = start
+    dashboard["R3"] = end_exclusive
+    dashboard.column_dimensions["R"].hidden = True
+
+    # The main sheet is a compact, visual output. KPI cells link to supporting schedules.
+    dashboard.merge_cells("A1:P1")
+    dashboard["A1"] = "STAYWISE  |  REVENUE DASHBOARD"
+    dashboard.merge_cells("A2:P2")
+    dashboard["A2"] = property_name
+    dashboard.merge_cells("A3:P3")
+    period_kind = "year to date" if year == as_of.year else "full year"
+    dashboard["A3"] = f"{year} {period_kind} · through {end.isoformat()} · EUR · confirmed and completed stays"
+    cards = [
+        ("A5:D5", "A6:D7", "Gross revenue", "=SUM('Monthly Summary'!F2:F13)", "€#,##0.00;[Red]-€#,##0.00"),
+        ("E5:H5", "E6:H7", "Booked nights", "=SUM('Monthly Summary'!E2:E13)", "#,##0"),
+        ("I5:L5", "I6:L7", "Active stays", '=COUNTIFS(ReservationsTable[Status],"confirmed",ReservationsTable[Nights in period],">0")+COUNTIFS(ReservationsTable[Status],"completed",ReservationsTable[Nights in period],">0")', "#,##0"),
+        ("M5:P5", "M6:P7", "Average revenue per booked night", '=IF(E6=0,0,A6/E6)', "€#,##0.00;[Red]-€#,##0.00"),
+    ]
+    for label_range, value_range, label, formula, number_format in cards:
+        dashboard.merge_cells(label_range)
+        dashboard.merge_cells(value_range)
+        label_cell = dashboard[label_range.split(":")[0]]
+        value_cell = dashboard[value_range.split(":")[0]]
+        label_cell.value = label
+        label_cell.alignment = Alignment(horizontal="center", vertical="center")
+        label_cell.font = Font(color=NAVY, bold=True, size=11)
+        label_cell.fill = PatternFill("solid", fgColor=PALE)
+        value_cell.value = formula
+        value_cell.number_format = number_format
+        value_cell.alignment = Alignment(horizontal="center", vertical="center")
+        value_cell.font = Font(color=NAVY, bold=True, size=20)
+        value_cell.fill = PatternFill("solid", fgColor="F5F8FA")
+
+    dashboard.merge_cells("A9:P9")
+    dashboard["A9"] = "Edit rows in the Reservations table to update the schedules and charts for this reporting period. Download again to change the year."
+    dashboard["A9"].font = Font(italic=True, color="526676", size=10)
+    dashboard["A9"].alignment = Alignment(wrap_text=True, vertical="center")
+    dashboard.row_dimensions[9].height = 30
+
+    # Reservation rows hold the editable source data. Revenue and period nights are formulas.
+    reservation_headers = [
+        "Booking ID", "Guest", "Email", "Phone", "Check-in", "Check-out",
+        "Nights in period", "Guests", "Nightly rate (€)", "Revenue in period (€)",
+        "Status", "Source", "Notes",
+    ]
+    detail.append(reservation_headers)
+    for reservation, _ in stays:
+        row_number = detail.max_row + 1
+        detail.append([
+            reservation.get("id"), reservation.get("guest_name"), reservation.get("email"), reservation.get("phone"),
+            date.fromisoformat(str(reservation["checkin"])), date.fromisoformat(str(reservation["checkout"])),
+            f"=MAX(0,MIN(F{row_number},'Revenue Dashboard'!$R$3)-MAX(E{row_number},'Revenue Dashboard'!$R$2))",
+            reservation.get("guests"), float(reservation.get("nightly_rate") or 0),
+            f'=IF(OR(K{row_number}="confirmed",K{row_number}="completed"),G{row_number}*I{row_number},0)',
+            str(reservation.get("status") or "").lower(), reservation.get("source") or "Other", reservation.get("notes"),
+        ])
+    if detail.max_row == 1:
+        detail.append([None, "No reservations in this reporting period", None, None, None, None, 0, None, 0, 0, "cancelled", None, None])
+    reservation_table = Table(displayName="ReservationsTable", ref=f"A1:M{detail.max_row}")
+    reservation_table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True, showColumnStripes=False)
+    detail.add_table(reservation_table)
+
+    # One row per calendar night makes zero-revenue dates visible and keeps monthly totals live.
+    ledger.append(["Night", "Weekday", "Gross revenue (€)", "Status"])
+    day_count = (end_exclusive - start).days
+    for offset in range(day_count):
+        row_number = ledger.max_row + 1
+        night = start + timedelta(days=offset)
+        ledger.append([
+            night,
+            night.strftime("%A"),
+            f'=SUMIFS(ReservationsTable[Nightly rate (€)],ReservationsTable[Check-in],"<="&A{row_number},ReservationsTable[Check-out],">"&A{row_number},ReservationsTable[Status],"confirmed")+SUMIFS(ReservationsTable[Nightly rate (€)],ReservationsTable[Check-in],"<="&A{row_number},ReservationsTable[Check-out],">"&A{row_number},ReservationsTable[Status],"completed")',
+            f'=IF(OR(COUNTIFS(ReservationsTable[Check-in],"<="&A{row_number},ReservationsTable[Check-out],">"&A{row_number},ReservationsTable[Status],"confirmed")>0,COUNTIFS(ReservationsTable[Check-in],"<="&A{row_number},ReservationsTable[Check-out],">"&A{row_number},ReservationsTable[Status],"completed")>0),"Booked",IF(COUNTIFS(ReservationsTable[Check-in],"<="&A{row_number},ReservationsTable[Check-out],">"&A{row_number},ReservationsTable[Status],"cancelled")>0,"Cancelled","Available"))',
+        ])
+    ledger_table = Table(displayName="DailyLedgerTable", ref=f"A1:D{ledger.max_row}")
+    ledger_table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium4", showRowStripes=True)
+    ledger.add_table(ledger_table)
+
+    # Monthly totals and occupancy formulas recalculate from the daily ledger.
+    monthly_ws.append(["Month", "Month start", "Next month", "Calendar nights in period", "Booked nights", "Gross revenue (€)", "Average nightly rate (€)", "Occupancy"])
+    for month in range(1, 13):
+        row_number = month + 1
+        month_start = date(year, month, 1)
+        next_month = date(year + (month == 12), month % 12 + 1, 1)
+        period_nights = max(0, (min(next_month, end_exclusive) - month_start).days)
+        monthly_ws.append([
+            month_start.strftime("%B"), month_start, next_month, period_nights,
+            f'=COUNTIFS(DailyLedgerTable[Night],">="&B{row_number},DailyLedgerTable[Night],"<"&C{row_number},DailyLedgerTable[Status],"Booked")',
+            f'=SUMIFS(DailyLedgerTable[Gross revenue (€)],DailyLedgerTable[Night],">="&B{row_number},DailyLedgerTable[Night],"<"&C{row_number})',
+            f'=IF(E{row_number}=0,0,F{row_number}/E{row_number})',
+            f'=IF(D{row_number}=0,0,E{row_number}/D{row_number})',
+        ])
+    monthly_table = Table(displayName="MonthlySummaryTable", ref="A1:H13")
+    monthly_table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium4", showRowStripes=True)
+    monthly_ws.add_table(monthly_table)
+
+    # The channel chart uses live formulas tied to the editable Reservations table.
+    channels_ws.append(["Booking source", "Active stays", "Gross revenue (€)"])
+    channel_names = sorted({str(r.get("source") or "Other").strip() or "Other" for r, _ in stays}, key=str.casefold)
+    if not channel_names:
+        channel_names = ["No bookings"]
+    for channel in channel_names:
+        row_number = channels_ws.max_row + 1
+        channels_ws.append([
+            channel,
+            f'=COUNTIFS(ReservationsTable[Source],A{row_number},ReservationsTable[Status],"confirmed",ReservationsTable[Nights in period],">0")+COUNTIFS(ReservationsTable[Source],A{row_number},ReservationsTable[Status],"completed",ReservationsTable[Nights in period],">0")',
+            f'=SUMIFS(ReservationsTable[Revenue in period (€)],ReservationsTable[Source],A{row_number})',
+        ])
+    channel_table = Table(displayName="ChannelSummaryTable", ref=f"A1:C{channels_ws.max_row}")
+    channel_table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium4", showRowStripes=True)
+    channels_ws.add_table(channel_table)
+
+    # Formula-linked charts on the dashboard change when source rows change in Excel.
+    revenue_chart = AreaChart()
+    revenue_chart.title = f"Monthly revenue · {year}"
+    revenue_chart.style = 13
+    revenue_chart.y_axis.title = "EUR"
+    revenue_chart.x_axis.title = "Month"
+    revenue_chart.height, revenue_chart.width = 8.5, 17
+    revenue_chart.add_data(Reference(monthly_ws, min_col=6, min_row=1, max_row=13), titles_from_data=True)
+    revenue_chart.set_categories(Reference(monthly_ws, min_col=1, min_row=2, max_row=13))
+    revenue_chart.series[0].graphicalProperties.solidFill = TEAL
+    revenue_chart.series[0].graphicalProperties.line.solidFill = TEAL
+    dashboard.add_chart(revenue_chart, "A11")
+
+    nights_chart = BarChart()
+    nights_chart.type = "col"
+    nights_chart.style = 10
+    nights_chart.title = "Booked nights by month"
+    nights_chart.y_axis.title = "Nights"
+    nights_chart.x_axis.title = "Month"
+    nights_chart.height, nights_chart.width = 8.5, 17
+    nights_chart.add_data(Reference(monthly_ws, min_col=5, min_row=1, max_row=13), titles_from_data=True)
+    nights_chart.set_categories(Reference(monthly_ws, min_col=1, min_row=2, max_row=13))
+    nights_chart.series[0].graphicalProperties.solidFill = "E79447"
+    dashboard.add_chart(nights_chart, "I11")
+
+    channel_chart = DoughnutChart()
+    channel_chart.title = "Revenue by booking source"
+    channel_chart.style = 10
+    channel_chart.holeSize = 58
+    channel_chart.height, channel_chart.width = 8.5, 17
+    channel_chart.add_data(Reference(channels_ws, min_col=3, min_row=1, max_row=channels_ws.max_row), titles_from_data=True)
+    channel_chart.set_categories(Reference(channels_ws, min_col=1, min_row=2, max_row=channels_ws.max_row))
+    channel_chart.dataLabels = DataLabelList()
+    channel_chart.dataLabels.showPercent = True
+    channel_chart.dataLabels.showLeaderLines = True
+    dashboard.add_chart(channel_chart, "A28")
+
+    # Consistent visual styling and readable supporting sheets.
+    navy_fill = PatternFill("solid", fgColor=NAVY)
+    teal_fill = PatternFill("solid", fgColor=TEAL)
+    pale_fill = PatternFill("solid", fgColor=PALE)
+    thin_border = Border(bottom=Side(style="thin", color="D6E2E7"))
+    for ws in (monthly_ws, channels_ws, ledger, detail):
         ws.sheet_view.showGridLines = False
-        ws.freeze_panes = "A2" if ws.title != "Revenue Dashboard" else "A5"
-        ws.auto_filter.ref = ws.dimensions if ws.title != "Revenue Dashboard" and ws.max_row > 1 else None
+        ws.freeze_panes = "A2"
+        ws.auto_filter.ref = ws.dimensions
+        ws.sheet_properties.tabColor = TEAL if ws is monthly_ws else NAVY
         for cell in ws[1]:
-            cell.fill = PatternFill("solid", fgColor=NAVY)
-            cell.font = Font(color="FFFFFF", bold=True, size=11)
+            cell.fill = navy_fill
+            cell.font = Font(color="FFFFFF", bold=True)
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
+        ws.row_dimensions[1].height = 30
         for row in ws.iter_rows(min_row=2):
             for cell in row:
+                cell.border = thin_border
                 if cell.row % 2 == 0:
                     cell.fill = PatternFill("solid", fgColor="F3F7F8")
-                if isinstance(cell.value, (float, int)) and "revenue" in str(ws.cell(1, cell.column).value).lower():
-                    cell.number_format = '€#,##0.00;[Red]-€#,##0.00'
-        for col_cells in ws.columns:
-            if not hasattr(col_cells[0], "column"):
-                continue
-            max_len = max((len(str(cell.value or "")) for cell in col_cells if not isinstance(cell, type(None))), default=10)
-            ws.column_dimensions[get_column_letter(col_cells[0].column)].width = min(max(max_len + 2, 13), 38)
-    for cell in dashboard[5]:
-        cell.fill = PatternFill("solid", fgColor=TEAL)
-        cell.font = Font(color="FFFFFF", bold=True)
-    dashboard[1][0].font = Font(size=20, color=NAVY, bold=True)
-    dashboard[2][0].font = Font(size=15, color=TEAL, bold=True)
-    dashboard[3][0].font = Font(italic=True, color="526676")
-    dashboard.column_dimensions["A"].width = 35
-    dashboard.column_dimensions["B"].width = 22
-    dashboard.column_dimensions["C"].width = 92
-    for cell_ref in ("B6", "B9"):
-        dashboard[cell_ref].number_format = '€#,##0.00;[Red]-€#,##0.00'
-        dashboard[cell_ref].font = Font(size=14, color=NAVY, bold=True)
-    for row in range(12, 24):
-        dashboard.cell(row=row, column=2).number_format = '€#,##0.00;[Red]-€#,##0.00'
-    for ws in (monthly_ws, detail):
-        for row in ws.iter_rows(min_row=2):
-            for cell in row:
-                if cell.is_date:
-                    cell.number_format = "dd mmm yyyy"
-    for row in monthly_ws.iter_rows(min_row=2, min_col=4, max_col=5):
-        for cell in row:
-            cell.number_format = '€#,##0.00;[Red]-€#,##0.00'
-    for row in detail.iter_rows(min_row=2, min_col=9, max_col=10):
-        for cell in row:
-            cell.number_format = '€#,##0.00;[Red]-€#,##0.00'
-    for row in ledger.iter_rows(min_row=2, min_col=3, max_col=3):
-        for cell in row:
-            cell.number_format = '€#,##0.00;[Red]-€#,##0.00'
+        for cells in ws.columns:
+            column_letter = get_column_letter(cells[0].column)
+            max_len = max((len(str(cell.value or "")) for cell in cells[:100] if cell.value is not None and not (isinstance(cell.value, str) and cell.value.startswith("="))), default=10)
+            ws.column_dimensions[column_letter].width = min(max(max_len + 2, 13), 36)
+
+    dashboard.sheet_view.showGridLines = False
+    dashboard.freeze_panes = "A5"
+    dashboard.sheet_properties.tabColor = TEAL
+    dashboard.sheet_view.zoomScale = 85
+    dashboard.merge_cells("A1:P1")
+    dashboard.merge_cells("A2:P2")
+    dashboard.merge_cells("A3:P3")
+    dashboard["A1"].font = Font(color="FFFFFF", bold=True, size=20)
+    dashboard["A1"].fill = navy_fill
+    dashboard["A1"].alignment = Alignment(vertical="center")
+    dashboard["A2"].font = Font(color=NAVY, bold=True, size=16)
+    dashboard["A3"].font = Font(color="526676", italic=True, size=10)
+    dashboard.row_dimensions[1].height = 36
+    dashboard.row_dimensions[2].height = 28
+    dashboard.row_dimensions[3].height = 24
+    dashboard.row_dimensions[5].height = 25
+    dashboard.row_dimensions[6].height = 24
+    dashboard.row_dimensions[7].height = 24
+    for column in range(1, 17):
+        dashboard.column_dimensions[get_column_letter(column)].width = 13
+    for cell in dashboard[1]:
+        cell.fill = navy_fill
+    for cell in dashboard[2]:
+        cell.fill = pale_fill
+    dashboard.column_dimensions["A"].width = 18
+    dashboard.column_dimensions["E"].width = 18
+    dashboard.column_dimensions["I"].width = 18
+    dashboard.column_dimensions["M"].width = 18
+    dashboard["R1"].font = Font(color=NAVY, bold=True)
+    dashboard["R2"].number_format = "dd mmm yyyy"
+    dashboard["R3"].number_format = "dd mmm yyyy"
+    dashboard.print_options.horizontalCentered = True
+    dashboard.sheet_properties.pageSetUpPr.fitToPage = True
+    dashboard.page_setup.fitToWidth = 1
+    dashboard.page_setup.fitToHeight = 1
+    dashboard.page_setup.orientation = "landscape"
+
+    for row in monthly_ws.iter_rows(min_row=2):
+        row[1].number_format = "dd mmm yyyy"
+        row[2].number_format = "dd mmm yyyy"
+        row[5].number_format = '€#,##0.00;[Red]-€#,##0.00'
+        row[6].number_format = '€#,##0.00;[Red]-€#,##0.00'
+        row[7].number_format = "0.0%"
+    for row in channels_ws.iter_rows(min_row=2, min_col=3, max_col=3):
+        row[0].number_format = '€#,##0.00;[Red]-€#,##0.00'
+    for row in ledger.iter_rows(min_row=2):
+        row[0].number_format = "dd mmm yyyy"
+        row[2].number_format = '€#,##0.00;[Red]-€#,##0.00'
+    for row in detail.iter_rows(min_row=2):
+        row[4].number_format = "dd mmm yyyy"
+        row[5].number_format = "dd mmm yyyy"
+        row[6].number_format = "#,##0"
+        row[8].number_format = '€#,##0.00;[Red]-€#,##0.00'
+        row[9].number_format = '€#,##0.00;[Red]-€#,##0.00'
+
     output = BytesIO()
     wb.save(output)
     return output.getvalue()
-
 
 def build_pdf_report(property_name: str, report: dict[str, Any], comparables: list[dict[str, Any]], settings: dict[str, Any], market: dict[str, Any]) -> bytes:
     output = BytesIO()
