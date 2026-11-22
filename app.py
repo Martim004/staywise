@@ -1152,7 +1152,8 @@ elif page == "Market":
                 st.caption("Check the source page for current data files or try again later.")
     else:
         st.caption("Load the public listing snapshot when you want to refresh your comparison. The download is cached for 24 hours.")
-    st.markdown(f"Data: [Inside Airbnb Lisbon listings]({SOURCE_PAGE}). This public dataset contains Airbnb listings only; Booking.com prices are not supplied.")
+    market_city_label = city_for_area(active_property.get("area", ""))
+    st.markdown(f"Data: [Inside Airbnb {market_city_label} listings]({SOURCE_PAGE}). This public dataset contains Airbnb listings only; Booking.com prices are not supplied.")
     st.subheader("Add a comparable listing")
     with st.form("add_comp", clear_on_submit=True):
         c1,c2,c3 = st.columns(3)
