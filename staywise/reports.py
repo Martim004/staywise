@@ -150,11 +150,34 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
         if nights:
             stays.append((reservation, nights))
 
-    # The two hidden dates are the single reporting-period controls used by formulas.
-    dashboard["R1"] = "Report period controls"
-    dashboard["R2"] = start
-    dashboard["R3"] = end_exclusive
-    dashboard.column_dimensions["R"].hidden = True
+    # Precompute report values for consistent rendering across spreadsheet apps.
+    active_statuses = {"confirmed", "completed"}
+    daily_revenue = {start + timedelta(days=i): 0.0 for i in range((end_exclusive - start).days)}
+    daily_status = {night: "Not booked" for night in daily_revenue}
+    channel_totals: dict[str, dict[str, float]] = {}
+    active_stays = 0
+    for reservation, _ in stays:
+        status = str(reservation.get("status") or "").lower()
+        checkin = date.fromisoformat(str(reservation["checkin"]))
+        checkout = date.fromisoformat(str(reservation["checkout"]))
+        rate = float(reservation.get("nightly_rate") or 0)
+        source = str(reservation.get("source") or "Other").strip() or "Other"
+        channel = channel_totals.setdefault(source, {"stays": 0, "revenue": 0.0})
+        clipped_start, clipped_end = max(checkin, start), min(checkout, end_exclusive)
+        overlap = max(0, (clipped_end - clipped_start).days)
+        if status in active_statuses:
+            active_stays += 1
+            channel["stays"] += 1
+            channel["revenue"] += overlap * rate
+        for night in daily_revenue:
+            if checkin <= night < checkout:
+                if status in active_statuses:
+                    daily_revenue[night] += rate
+                    daily_status[night] = "Booked"
+                elif status == "cancelled" and daily_status[night] == "Not booked":
+                    daily_status[night] = "Cancelled"
+    gross_revenue = sum(daily_revenue.values())
+    booked_nights = sum(status == "Booked" for status in daily_status.values())
 
     # The main sheet is a compact, visual output. KPI cells link to supporting schedules.
     dashboard.merge_cells("A1:P1")
@@ -165,10 +188,10 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
     period_kind = "year to date" if year == as_of.year else "full year"
     dashboard["A3"] = f"{year} {period_kind} · through {end.isoformat()} · EUR · confirmed and completed stays"
     cards = [
-        ("A5:D5", "A6:D7", "Gross revenue", "=SUM('Monthly Summary'!F2:F13)", "€#,##0.00;[Red]-€#,##0.00"),
-        ("E5:H5", "E6:H7", "Booked nights", "=SUM('Monthly Summary'!E2:E13)", "#,##0"),
-        ("I5:L5", "I6:L7", "Active stays", '=COUNTIFS(Reservations!$K$2:$K$5001,"confirmed",Reservations!$G$2:$G$5001,">0")+COUNTIFS(Reservations!$K$2:$K$5001,"completed",Reservations!$G$2:$G$5001,">0")', "#,##0"),
-        ("M5:P5", "M6:P7", "Average revenue per booked night", '=IF(E6=0,0,A6/E6)', "€#,##0.00;[Red]-€#,##0.00"),
+        ("A5:D5", "A6:D7", "Gross revenue", gross_revenue, "€#,##0.00;[Red]-€#,##0.00"),
+        ("E5:H5", "E6:H7", "Booked nights", booked_nights, "#,##0"),
+        ("I5:L5", "I6:L7", "Active stays", active_stays, "#,##0"),
+        ("M5:P5", "M6:P7", "Average revenue per booked night", gross_revenue / booked_nights if booked_nights else 0, "€#,##0.00;[Red]-€#,##0.00"),
     ]
     for label_range, value_range, label, formula, number_format in cards:
         dashboard.merge_cells(label_range)
@@ -186,12 +209,12 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
         value_cell.fill = PatternFill("solid", fgColor="F5F8FA")
 
     dashboard.merge_cells("A9:P9")
-    dashboard["A9"] = "Edit rows in the Reservations table to update the schedules and charts for this reporting period. Download again to change the year."
+    dashboard["A9"] = "This is a point-in-time report. Download again after changing bookings in StayWise or to report a different year."
     dashboard["A9"].font = Font(italic=True, color="526676", size=10)
     dashboard["A9"].alignment = Alignment(wrap_text=True, vertical="center")
     dashboard.row_dimensions[9].height = 30
 
-    # Reservation rows hold the editable source data. Revenue and period nights are formulas.
+    # Reservation rows include period nights and revenue calculated for this report.
     reservation_headers = [
         "Booking ID", "Guest", "Email", "Phone", "Check-in", "Check-out",
         "Nights in period", "Guests", "Nightly rate (€)", "Revenue in period (€)",
@@ -203,9 +226,10 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
         detail.append([
             reservation.get("id"), reservation.get("guest_name"), reservation.get("email"), reservation.get("phone"),
             date.fromisoformat(str(reservation["checkin"])), date.fromisoformat(str(reservation["checkout"])),
-            f"=MAX(0,MIN(F{row_number},'Revenue Dashboard'!$R$3)-MAX(E{row_number},'Revenue Dashboard'!$R$2))",
+            max(0, (min(date.fromisoformat(str(reservation["checkout"])), end_exclusive) - max(date.fromisoformat(str(reservation["checkin"])), start)).days),
             reservation.get("guests"), float(reservation.get("nightly_rate") or 0),
-            f'=IF(OR(K{row_number}="confirmed",K{row_number}="completed"),G{row_number}*I{row_number},0)',
+            (max(0, (min(date.fromisoformat(str(reservation["checkout"])), end_exclusive) - max(date.fromisoformat(str(reservation["checkin"])), start)).days) * float(reservation.get("nightly_rate") or 0)
+             if str(reservation.get("status") or "").lower() in active_statuses else 0),
             str(reservation.get("status") or "").lower(), reservation.get("source") or "Other", reservation.get("notes"),
         ])
     if detail.max_row == 1:
@@ -216,41 +240,35 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
     # Keep ordinary cell references compatible across Excel, locale, and spreadsheet clients.
     reservation_last_row = max(5001, detail.max_row + 1000)
 
-    # One row per calendar night makes zero-revenue dates visible and keeps monthly totals live.
+    # One row per calendar night keeps zero-revenue dates visible.
     ledger.append(["Night", "Weekday", "Gross revenue (€)", "Status"])
     day_count = (end_exclusive - start).days
     for offset in range(day_count):
-        row_number = ledger.max_row + 1
         night = start + timedelta(days=offset)
-        ledger.append([
-            night,
-            night.strftime("%A"),
-            f'=SUMIFS(Reservations!$I$2:$I${reservation_last_row},Reservations!$E$2:$E${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K${reservation_last_row},"confirmed")+SUMIFS(Reservations!$I$2:$I${reservation_last_row},Reservations!$E$2:$E${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K${reservation_last_row},"completed")',
-            f'=IF(OR(COUNTIFS(Reservations!$E$2:$E${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K${reservation_last_row},"confirmed")>0,COUNTIFS(Reservations!$E$2:$E${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K${reservation_last_row},"completed")>0),"Booked",IF(COUNTIFS(Reservations!$E$2:$E${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K${reservation_last_row},"cancelled")>0,"Cancelled","Not booked"))',
-        ])
+        ledger.append([night, night.strftime("%A"), daily_revenue[night], daily_status[night]])
     ledger_table = Table(displayName="DailyLedgerTable", ref=f"A1:D{ledger.max_row}")
     ledger_table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium4", showRowStripes=True)
     ledger.add_table(ledger_table)
 
-    # Monthly totals and occupancy formulas recalculate from the daily ledger.
+    # Monthly totals are calculated and stored as numeric values.
     monthly_ws.append(["Month", "Month start", "Next month", "Calendar nights in period", "Booked nights", "Gross revenue (€)", "Average nightly rate (€)", "Occupancy"])
     for month in range(1, 13):
-        row_number = month + 1
         month_start = date(year, month, 1)
         next_month = date(year + (month == 12), month % 12 + 1, 1)
         period_nights = max(0, (min(next_month, end_exclusive) - month_start).days)
+        days = [month_start + timedelta(days=i) for i in range(period_nights)]
+        month_booked = sum(daily_status.get(day) == "Booked" for day in days)
+        month_revenue = sum(daily_revenue.get(day, 0.0) for day in days)
         monthly_ws.append([
             month_start.strftime("%B"), month_start, next_month, period_nights,
-            f'=COUNTIFS(\'Daily Ledger\'!$A$2:$A${ledger.max_row},">="&B{row_number},\'Daily Ledger\'!$A$2:$A${ledger.max_row},"<"&C{row_number},\'Daily Ledger\'!$D$2:$D${ledger.max_row},"Booked")',
-            f'=SUMIFS(\'Daily Ledger\'!$C$2:$C${ledger.max_row},\'Daily Ledger\'!$A$2:$A${ledger.max_row},">="&B{row_number},\'Daily Ledger\'!$A$2:$A${ledger.max_row},"<"&C{row_number})',
-            f'=IF(E{row_number}=0,0,F{row_number}/E{row_number})',
-            f'=IF(D{row_number}=0,0,E{row_number}/D{row_number})',
+            month_booked, month_revenue, month_revenue / month_booked if month_booked else 0,
+            month_booked / period_nights if period_nights else 0,
         ])
     monthly_table = Table(displayName="MonthlySummaryTable", ref="A1:H13")
     monthly_table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium4", showRowStripes=True)
     monthly_ws.add_table(monthly_table)
 
-    # The channel chart uses live formulas tied to the editable Reservations table.
+    # Channel totals are precomputed numeric values.
     channels_ws.append(["Booking source", "Active stays", "Gross revenue (€)"])
     standard_channels = ["Airbnb", "Booking.com", "Direct", "Other"]
     observed_channels = {str(r.get("source") or "Other").strip() or "Other" for r, _ in stays}
@@ -259,14 +277,14 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
         row_number = channels_ws.max_row + 1
         channels_ws.append([
             channel,
-            f'=COUNTIFS(Reservations!$L$2:$L${reservation_last_row},A{row_number},Reservations!$K$2:$K${reservation_last_row},"confirmed",Reservations!$G$2:$G${reservation_last_row},">0")+COUNTIFS(Reservations!$L$2:$L${reservation_last_row},A{row_number},Reservations!$K$2:$K${reservation_last_row},"completed",Reservations!$G$2:$G${reservation_last_row},">0")',
-            f'=SUMIFS(Reservations!$J$2:$J${reservation_last_row},Reservations!$L$2:$L${reservation_last_row},A{row_number})',
+            int(channel_totals.get(channel, {}).get("stays", 0)),
+            float(channel_totals.get(channel, {}).get("revenue", 0.0)),
         ])
     channel_table = Table(displayName="ChannelSummaryTable", ref=f"A1:C{channels_ws.max_row}")
     channel_table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium4", showRowStripes=True)
     channels_ws.add_table(channel_table)
 
-    # Formula-linked charts on the dashboard change when source rows change in Excel.
+    # Charts visualize precomputed summary values consistently across spreadsheet apps.
     revenue_chart = AreaChart()
     revenue_chart.title = f"Monthly revenue · {year}"
     revenue_chart.style = 13
@@ -356,9 +374,6 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
     dashboard.column_dimensions["E"].width = 18
     dashboard.column_dimensions["I"].width = 18
     dashboard.column_dimensions["M"].width = 18
-    dashboard["R1"].font = Font(color=NAVY, bold=True)
-    dashboard["R2"].number_format = "dd mmm yyyy"
-    dashboard["R3"].number_format = "dd mmm yyyy"
     dashboard.print_options.horizontalCentered = True
     dashboard.sheet_properties.pageSetUpPr.fitToPage = True
     dashboard.page_setup.fitToWidth = 1
