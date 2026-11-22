@@ -192,12 +192,6 @@ READ_ONLY = public_demo
 settings, properties = get_workspace_bootstrap()
 if "pending_property_id" in st.session_state:
     st.session_state["selected_property_id"] = st.session_state.pop("pending_property_id")
-if public_demo and not st.session_state.get("demo_sample_defaulted"):
-    demo_home = next((p for p in properties if p["name"] == DEMO_PROPERTY_NAME), None)
-    if demo_home:
-        st.session_state["selected_property_id"] = demo_home["id"]
-        st.session_state["demo_sample_defaulted"] = True
-
 if not properties:
     st.markdown('<div class="brand">StayWise<span>.</span></div>', unsafe_allow_html=True)
     st.markdown('<div class="eyebrow">Portfolio setup</div>', unsafe_allow_html=True)
@@ -464,8 +458,7 @@ with st.sidebar:
     st.caption("Short-stay rental studio")
     property_ids = [p["id"] for p in properties]
     if st.session_state.get("selected_property_id") not in property_ids:
-        demo_home = next((p for p in properties if p["name"] == DEMO_PROPERTY_NAME), None)
-        st.session_state["selected_property_id"] = demo_home["id"] if demo_home else property_ids[0]
+        st.session_state["selected_property_id"] = property_ids[0]
     active_property_id = st.selectbox("Rental property", property_ids,
                                       format_func=lambda pid: next(p["name"] for p in properties if p["id"] == pid),
                                       key="selected_property_id")
@@ -659,9 +652,7 @@ elif page == "Overview":
         st.divider()
         st.subheader("Remove this rental")
         st.warning("Removing this property permanently deletes its reservations, guest contact details, blocked dates, and market comparisons.")
-        last_local_property = len(properties) == 1 and not READ_ONLY
-        if last_local_property:
-            st.caption("Add another property before removing this one; the local app must keep at least one rental.")
+        last_local_property = False
         confirm_delete = st.checkbox("I understand that this rental and its related data will be permanently deleted.",
                                      key=f"confirm_delete_property_{active_property_id}")
         if st.button("Delete selected property", type="secondary",
