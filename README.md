@@ -7,7 +7,10 @@ StayWise helps a short-term rental owner manage multiple homes and their stays, 
 ## Sign-in demo and team
 
 - App: https://staywise-martim004.streamlit.app
-- Team members and student numbers: **Add all names and student numbers before course submission.**
+- Team members and student numbers:
+  - Martim Jardim — 78002
+  - João Amorim — 51510
+  - Sara Fontana — 73632
 - Repository: https://github.com/Martim004/staywise
 
 The deployed app requires Google sign-in. Each account starts with a private portfolio. Manually added rentals receive clearly fictional sample bookings, a blocked date range, and market comparison pins. Airbnb earnings imports add the uploaded reservation records without generating sample stays. Each user's portfolio is isolated by Supabase RLS. The city selector follows the Portuguese city snapshots currently listed by Inside Airbnb (Lisbon and Porto). Neighborhood options are loaded from the matching city’s official Inside Airbnb `neighbourhoods.csv` file. Never commit real guest details or a local database file.
