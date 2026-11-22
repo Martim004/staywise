@@ -120,7 +120,6 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
     from openpyxl.chart import AreaChart, BarChart, DoughnutChart, Reference
     from openpyxl.chart.label import DataLabelList
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-    from openpyxl.worksheet.table import Table, TableStyleInfo
 
     wb = Workbook()
     wb.calculation.fullCalcOnLoad = True
@@ -234,9 +233,6 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
         ])
     if detail.max_row == 1:
         detail.append([None, "No reservations in this reporting period", None, None, None, None, 0, None, 0, 0, "cancelled", None, None])
-    reservation_table = Table(displayName="ReservationsTable", ref=f"A1:M{detail.max_row}")
-    reservation_table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True, showColumnStripes=False)
-    detail.add_table(reservation_table)
     # Keep ordinary cell references compatible across Excel, locale, and spreadsheet clients.
     reservation_last_row = max(5001, detail.max_row + 1000)
 
@@ -246,9 +242,6 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
     for offset in range(day_count):
         night = start + timedelta(days=offset)
         ledger.append([night, night.strftime("%A"), daily_revenue[night], daily_status[night]])
-    ledger_table = Table(displayName="DailyLedgerTable", ref=f"A1:D{ledger.max_row}")
-    ledger_table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium4", showRowStripes=True)
-    ledger.add_table(ledger_table)
 
     # Monthly totals are calculated and stored as numeric values.
     monthly_ws.append(["Month", "Month start", "Next month", "Calendar nights in period", "Booked nights", "Gross revenue (€)", "Average nightly rate (€)", "Occupancy"])
@@ -264,9 +257,6 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
             month_booked, month_revenue, month_revenue / month_booked if month_booked else 0,
             month_booked / period_nights if period_nights else 0,
         ])
-    monthly_table = Table(displayName="MonthlySummaryTable", ref="A1:H13")
-    monthly_table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium4", showRowStripes=True)
-    monthly_ws.add_table(monthly_table)
 
     # Channel totals are precomputed numeric values.
     channels_ws.append(["Booking source", "Active stays", "Gross revenue (€)"])
@@ -280,9 +270,6 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
             int(channel_totals.get(channel, {}).get("stays", 0)),
             float(channel_totals.get(channel, {}).get("revenue", 0.0)),
         ])
-    channel_table = Table(displayName="ChannelSummaryTable", ref=f"A1:C{channels_ws.max_row}")
-    channel_table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium4", showRowStripes=True)
-    channels_ws.add_table(channel_table)
 
     # Charts visualize precomputed summary values consistently across spreadsheet apps.
     revenue_chart = AreaChart()
