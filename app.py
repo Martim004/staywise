@@ -24,7 +24,7 @@ from staywise.database import (add_blocked_dates, add_comparable, add_property, 
                                init_db, is_demo_mode,
                                save_user_profile, set_authenticated_user, update_property, update_property_stay_hours,
                                set_comparable_selected)
-from staywise.imports import export_csv, parse_booking_csv, template_csv
+from staywise.imports import export_csv
 from staywise.inside_airbnb import LISBON_LISTINGS_URL, SOURCE_PAGE, listings_within_radius
 from staywise.postgres_store import database_urls, load_latest_snapshot, save_latest_snapshot
 from staywise.reports import build_revenue_workbook
@@ -553,8 +553,8 @@ STAYWISE_HELP = {
     ),
     "How do I view or add a booking?": (
         "Open **Bookings → All bookings** to view reservations for the selected property. "
-        "Use **Add booking** to enter a reservation or **Import CSV** to import several. "
-        "Saving and importing bookings is available outside the public demo."
+        "Use **Add booking** to enter a reservation, then open **All bookings** to review it. "
+        "Saving bookings is available outside the public demo."
     ),
     "How do I set check-in and check-out hours?": (
         "Open **Overview → Check-in and check-out hours**. Select the hours you want to set "
@@ -579,7 +579,7 @@ STAYWISE_HELP = {
     ),
     "What can I do in the public demo?": (
         "Explore the fictional property, check the calendar and revenue, and schedule sample cleanings. "
-        "Guest records, booking edits, and CSV uploads are disabled. Use fictional details only."
+        "Guest records and booking edits are disabled. Use fictional details only."
     ),
 }
 
@@ -1060,8 +1060,8 @@ elif page == "Bookings":
         st.info("No upcoming check-outs for this property.")
 
     default_tab = "Block dates" if st.session_state.pop("_open_block_dates_tab", False) else None
-    tab_add, tab_import, tab_block, tab_list = st.tabs(
-        ["Add booking", "Import CSV", "Block dates", "All bookings"], default=default_tab,
+    tab_add, tab_block, tab_list = st.tabs(
+        ["Add booking", "Block dates", "All bookings"], default=default_tab,
     )
     with tab_add:
         with st.form("new_booking", clear_on_submit=True):
@@ -1089,26 +1089,6 @@ elif page == "Bookings":
                 add_reservation({**item, "property_id":active_property_id})
                 st.success("Booking saved.")
                 st.rerun()
-    with tab_import:
-        st.download_button("Download CSV template", template_csv(), "staywise-bookings-template.csv", "text/csv")
-        if READ_ONLY:
-            st.info("CSV uploads are disabled in the public demo so guest contact data cannot be submitted to the shared app.")
-            upload = None
-        else:
-            st.caption("Use ISO dates (YYYY-MM-DD). Each row must include all template columns. Rows with errors are skipped; overlaps with existing or earlier imported bookings are rejected.")
-            upload = st.file_uploader("Upload booking CSV", type=["csv"])
-        if upload:
-            accepted, errors = parse_booking_csv(upload.getvalue(), reservations, blocks)
-            st.write(f"Valid rows: **{len(accepted)}** · Rows with errors: **{len(errors)}**")
-            if accepted:
-                st.dataframe(pd.DataFrame(accepted), width="stretch", hide_index=True)
-                if st.button(f"Import {len(accepted)} valid booking(s)", type="primary", disabled=READ_ONLY):
-                    for item in accepted: add_reservation({**item, "property_id":active_property_id})
-                    st.success(f"Imported {len(accepted)} booking(s).")
-                    st.rerun()
-            if errors:
-                with st.expander("Review import errors", expanded=True):
-                    for error in errors: st.error(error)
     with tab_block:
         st.write("Block owner stays, maintenance, or other unavailable nights.")
         with st.form("block_dates", clear_on_submit=True):
@@ -1139,7 +1119,7 @@ elif page == "Bookings":
             if st.button("Delete selected booking", type="secondary", disabled=READ_ONLY):
                 delete_reservation(delete_id); st.rerun()
         else:
-            st.info("No bookings yet. Add one or import the CSV template.")
+            st.info("No bookings yet. Add your first booking to get started.")
 
 
 elif page == "Calendar":
