@@ -42,7 +42,7 @@ def area_with_city(neighborhood: str, city: str) -> str:
     """Save a neighborhood together with its supported city."""
     if city not in LISTINGS_URL_BY_CITY:
         raise ValueError("StayWise currently supports properties in Lisbon and Porto.")
-    cleaned = re.sub(r"[,\\s]*(?:Lisbon|Lisboa|Porto|Oporto)(?:,\\s*Portugal)?\\s*$", "", neighborhood.strip(), flags=re.IGNORECASE).strip(" ,")
+    cleaned = re.sub(r"[,\s]*(?:Lisbon|Lisboa|Porto|Oporto)(?:,\s*Portugal)?\s*$", "", neighborhood.strip(), flags=re.IGNORECASE).strip(" ,")
     return f"{cleaned}, {city}" if cleaned else city
 
 
