@@ -151,65 +151,6 @@ def seed_fictional_property(property_id: int, city: str, bedrooms: int, capacity
         })
 
 
-def ensure_public_demo_example() -> None:
-    """Create the fictional Campo example and its demo records in this session's DB."""
-    homes = get_properties()
-    sample = next((p for p in homes if p["name"] in DEMO_PROPERTY_ALIASES), None)
-    if sample is None:
-        sample_id = add_property({
-            "name": DEMO_PROPERTY_NAME, "area": "Campo de Ourique, Lisbon · fictional sample area",
-            "bedrooms": 2, "capacity": 4, "latitude": 38.719, "longitude": -9.165,
-            "airbnb_url": "", "booking_url": "",
-        })
-        sample = next(p for p in get_properties() if p["id"] == sample_id)
-    property_id = int(sample["id"])
-    if sample["name"] != DEMO_PROPERTY_NAME:
-        update_property(property_id, {**sample, "name": DEMO_PROPERTY_NAME,
-                                       "area": "Campo de Ourique, Lisbon · fictional sample area",
-                                       "bedrooms": 2, "capacity": 4})
-
-    if not get_reservations(property_id):
-        today = date.today()
-        guest_names = ["Alex Example", "Jamie Sample", "Taylor Demo", "Morgan Fiction", "Riley Sample"]
-        stay_number = 0
-        for month in range(1, 13):
-            month_start = date(today.year, month, 1)
-            month_days = calendar.monthrange(today.year, month)[1]
-            for offset in range(0, month_days, 5):
-                checkin = month_start + timedelta(days=offset)
-                checkout = checkin + timedelta(days=min(3, month_days - offset))
-                stay_number += 1
-                add_reservation({
-                    "guest_name": guest_names[stay_number % len(guest_names)],
-                    "email": f"guest{stay_number}@example.test", "phone": "+351 900 000 000",
-                    "checkin": checkin.isoformat(), "checkout": checkout.isoformat(), "guests": 2,
-                    "nightly_rate": 150 if month in {6, 7, 8, 9} else 112,
-                    "status": "completed" if checkout <= today else "confirmed",
-                    "source": "Airbnb (fictional sample)",
-                    "notes": "Fictional sample booking for demonstration; not a real guest.",
-                    "property_id": property_id,
-                })
-
-    if not get_blocked_dates(property_id):
-        blocked_start = date.today() + timedelta(days=70)
-        add_blocked_dates(blocked_start.isoformat(), (blocked_start + timedelta(days=3)).isoformat(),
-                          "Sample owner stay · fictional", property_id)
-
-    if not get_comparables(property_id):
-        for name, distance, rate in [
-            ("Fictional T2 with balcony", 0.4, 138),
-            ("Fictional renovated T2", 0.8, 152),
-            ("Fictional courtyard apartment", 1.1, 145),
-        ]:
-            add_comparable({
-                "name": name, "area": "Campo de Ourique · fictional sample",
-                "bedrooms": 2, "capacity": 4, "distance_km": distance,
-                "nightly_rate": rate, "observed_date": date.today().isoformat(), "url": "",
-                "notes": "Fictional comparison for demonstration; not a real listing.",
-                "selected": 1, "property_id": property_id,
-            })
-
-
 auth_configured = auth_is_configured()
 auth_user = current_user() if auth_configured else None
 local_development = os.getenv("STAYWISE_LOCAL_MODE", "").strip().lower() in {"1", "true", "yes"}
@@ -223,7 +164,7 @@ if not local_development and not auth_configured:
 if not auth_user and not local_development:
     st.markdown('<div class="brand">StayWise<span>.</span></div>', unsafe_allow_html=True)
     st.title("Welcome to StayWise")
-    st.write("Sign in with Google to open your private portfolio and fictional Campo de Ourique example.")
+    st.write("Sign in with Google to create your private rental portfolio.")
     if st.button("Continue with Google", type="primary"):
         sign_in()
     st.stop()
@@ -237,8 +178,10 @@ try:
         if auth_user:
             save_user_profile(auth_user)
         # Seed fictional examples once per session/account rather than checking on every rerun.
-        if public_demo or auth_user:
-            ensure_public_demo_example()
+        if auth_user:
+            for old_sample in get_properties():
+                if old_sample["name"] in DEMO_PROPERTY_ALIASES and "fictional sample area" in str(old_sample.get("area", "")).casefold():
+                    delete_property(int(old_sample["id"]))
         st.session_state["_staywise_db_ready_for"] = db_scope
 except Exception as exc:
     st.error("StayWise could not open its private Supabase data store. Check the Supabase database settings and apply the account migration.")
@@ -266,8 +209,8 @@ if not properties:
     with st.form("first_demo_property", clear_on_submit=True):
         p1, p2, p3 = st.columns(3)
         new_name = p1.text_input("Property name *", placeholder="e.g. Lisbon City Apartment")
-        new_area = p2.text_input("Neighborhood", placeholder="e.g. Campo de Ourique")
-        new_city = st.selectbox("City", ["Lisbon", "Porto"], key="first_property_city")
+        new_area = p2.text_input("Neighborhood", placeholder="e.g. Bonfim")
+        new_city = st.selectbox("City", list(LISTINGS_URL_BY_CITY), key="first_property_city")
         new_bedrooms = p3.number_input("Bedrooms", min_value=0, max_value=30, value=2)
         p1, p2, p3 = st.columns(3)
         new_capacity = p1.number_input("Guest capacity", min_value=1, max_value=100, value=4)
@@ -687,7 +630,7 @@ elif page == "Overview":
                 st.rerun()
     with st.expander("Manage your rental portfolio"):
         st.caption("Save each home separately, then switch between them from the property selector. New homes get fictional bookings, blocked dates, and comparison pins for demonstration.")
-        new_city = st.selectbox("City for the new rental", ["Lisbon", "Porto"], key="add_property_city")
+        new_city = st.selectbox("City for the new rental", list(LISTINGS_URL_BY_CITY), key="add_property_city")
         with st.form("add_property", clear_on_submit=True):
             p1,p2,p3 = st.columns(3)
             new_name = p1.text_input("Property name *")
