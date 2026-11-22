@@ -30,7 +30,8 @@ from staywise.postgres_store import database_urls, load_latest_snapshot, save_la
 from staywise.reports import build_revenue_workbook
 from staywise.workbook_import import parse_property_import_workbook
 from staywise.airbnb_import import parse_airbnb_earnings_export
-from staywise.import_template_data import TEMPLATE_XLSX, AIRBNB_EARNINGS_TEMPLATE_XLSX
+from staywise.import_template_data import TEMPLATE_XLSX
+from staywise.airbnb_export_template import AIRBNB_EARNINGS_TEMPLATE_XLSX
 
 LISTINGS_URL_BY_CITY = {
     "Lisbon": LISBON_LISTINGS_URL,
