@@ -488,10 +488,9 @@ def add_reservations_batch(items: list[dict[str, Any]]) -> int:
                 table="reservations",
                 marks="?,?,?,?,?,?,?,?,?,?,?",
             ), [
-                (item["guest_name"], item.get("email", ""), item.get("phone", ""),
+                (property_id, item["guest_name"], item.get("email", ""), item.get("phone", ""),
                  item["checkin"], item["checkout"], item["guests"], item["nightly_rate"],
-                 item.get("status", "confirmed"), item.get("source", "Direct"),
-                 item.get("notes", ""), property_id)
+                 item.get("status", "confirmed"), item.get("source", "Direct"), item.get("notes", ""))
                 for item in accepted
             ])
     return len(accepted)
