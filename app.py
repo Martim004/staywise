@@ -107,9 +107,9 @@ div[data-testid="stMetric"] {border:1px solid color-mix(in srgb, currentColor 22
 }
 .eyebrow {text-transform:uppercase;letter-spacing:1.5px;font-size:11px;font-weight:700;margin-bottom:4px;}
 .subtle {font-size:14px;}
-.st-key-overview_remove_property {border:1px solid #f0c7c4;background:#fff8f7;border-radius:16px;padding:16px 18px;margin:18px 0;}
-.st-key-overview_remove_property [data-testid="stButton"] button {background:#b42318!important;border:1px solid #b42318!important;color:#fff!important;font-weight:700;min-height:48px;}
-.st-key-overview_remove_property [data-testid="stButton"] button:hover {background:#8f1d16!important;border-color:#8f1d16!important;color:#fff!important;}
+.st-key-remove_property_overview {display:flex;justify-content:flex-end;align-items:center;min-height:62px;}
+.st-key-remove_property_overview [data-testid="stButton"] button {min-height:38px;padding:0 14px;border-radius:10px;color:#526676;background:#fff;border:1px solid #cbd5dc;font-size:13px;font-weight:600;}
+.st-key-remove_property_overview [data-testid="stButton"] button:hover {background:#f1f5f6;border-color:#aebdc5;color:#17324d;}
 .st-key-confirm_property_delete [data-testid="stButton"] button {background:#b42318!important;border:1px solid #b42318!important;color:#fff!important;font-weight:700;}
 .st-key-confirm_property_delete [data-testid="stButton"] button:hover {background:#8f1d16!important;border-color:#8f1d16!important;color:#fff!important;}
 div[data-testid="stForm"] {padding:18px;border:1px solid color-mix(in srgb, currentColor 22%, transparent);border-radius:14px;}
@@ -864,7 +864,39 @@ if page == "Account":
 
 elif page == "Overview":
     st.markdown('<div class="eyebrow">Your rental at a glance</div>', unsafe_allow_html=True)
-    st.title(f"{settings.get('property_name','My Rental')} overview")
+    title_column, action_column = st.columns([5, 1], vertical_alignment="center")
+    with title_column:
+        st.title(f"{settings.get('property_name','My Rental')} overview")
+
+    @st.dialog("Confirm house removal")
+    def confirm_house_removal():
+        st.warning(
+            f"Delete **{active_property['name']}**? This permanently removes its bookings, "
+            "guest contact details, blocked dates, and market comparisons."
+        )
+        cancel_col, delete_col = st.columns(2)
+        cancel_col.button("Cancel", width="stretch", key="cancel_property_delete")
+        if delete_col.button(
+            "Delete house", type="primary", width="stretch", key="confirm_property_delete"
+        ):
+            delete_property(active_property_id)
+            remaining_properties = get_properties()
+            if remaining_properties:
+                st.session_state["pending_property_id"] = remaining_properties[0]["id"]
+            else:
+                st.session_state.pop("selected_property_id", None)
+            st.session_state.pop("inside_airbnb_loaded_for", None)
+            st.rerun()
+
+    with action_column:
+        if st.button(
+            "Remove house",
+            icon=":material/delete_outline:",
+            type="secondary",
+            width="content",
+            key="remove_property_overview",
+        ):
+            confirm_house_removal()
     st.markdown('<p class="subtle">Your rental calendar and local market context in one calm workspace.</p>', unsafe_allow_html=True)
     market = competitor_summary(comps)
     cols = st.columns(2)
@@ -872,36 +904,6 @@ elif page == "Overview":
     cols[1].metric("Manual comparable median", money(market["median_rate"]) if market["median_rate"] is not None else "—")
     st.info("Use the Calendar to see availability by day, or Market to compare nearby Lisbon or Porto Airbnb listings by radius.")
 
-    with st.container(key="overview_remove_property"):
-        st.markdown("**Remove this house**")
-        st.caption("Permanently remove the selected house and all of its related records.")
-        @st.dialog("Confirm house removal")
-        def confirm_house_removal():
-            st.warning(
-                f"Delete **{active_property['name']}**? This permanently removes its bookings, "
-                "guest contact details, blocked dates, and market comparisons."
-            )
-            cancel_col, delete_col = st.columns(2)
-            cancel_col.button("Cancel", width="stretch", key="cancel_property_delete")
-            if delete_col.button(
-                "Delete house", type="primary", width="stretch", key="confirm_property_delete"
-            ):
-                delete_property(active_property_id)
-                remaining_properties = get_properties()
-                if remaining_properties:
-                    st.session_state["pending_property_id"] = remaining_properties[0]["id"]
-                else:
-                    st.session_state.pop("selected_property_id", None)
-                st.session_state.pop("inside_airbnb_loaded_for", None)
-                st.rerun()
-
-        if st.button(
-            "Remove this house",
-            type="secondary",
-            width="stretch",
-            key="remove_property_overview",
-        ):
-            confirm_house_removal()
     with st.expander("Check-in and check-out hours"):
         st.caption("Set the usual local hours for this property. Select which hours to save.")
         with st.form(f"property_stay_hours_{active_property_id}"):
