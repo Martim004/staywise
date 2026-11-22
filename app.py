@@ -16,7 +16,7 @@ from streamlit_folium import st_folium
 
 from staywise.calculations import competitor_summary, date_ranges_overlap, validate_reservation
 from staywise.auth import auth_is_configured, current_user, sign_in, sign_out
-from staywise.database import (add_blocked_dates, add_comparable, add_property, add_reservation,
+from staywise.database import (add_blocked_dates, add_comparable, add_property, add_reservation, add_reservations_batch,
                                complete_checkout_cleaning, get_checkout_cleanings, schedule_checkout_cleaning,
                                delete_blocked_dates, delete_comparable, delete_property, delete_reservation,
                                get_blocked_dates, get_comparables, get_property_workspace_data,
@@ -28,6 +28,8 @@ from staywise.imports import export_csv
 from staywise.inside_airbnb import LISBON_LISTINGS_URL, SOURCE_PAGE, listings_within_radius
 from staywise.postgres_store import database_urls, load_latest_snapshot, save_latest_snapshot
 from staywise.reports import build_revenue_workbook
+from staywise.workbook_import import parse_property_import_workbook
+from staywise.import_template_data import TEMPLATE_XLSX
 
 LISTINGS_URL_BY_CITY = {
     "Lisbon": LISBON_LISTINGS_URL,
@@ -734,6 +736,9 @@ for demo_property in properties:
     demo_property_id = int(demo_property["id"])
     if demo_property_id in seeded_property_ids:
         continue
+    if not demo_property.get("sample_data_enabled", True):
+        seeded_property_ids.add(demo_property_id)
+        continue
     try:
         seed_fictional_property(
             demo_property_id,
@@ -1060,8 +1065,8 @@ elif page == "Bookings":
         st.info("No upcoming check-outs for this property.")
 
     default_tab = "Block dates" if st.session_state.pop("_open_block_dates_tab", False) else None
-    tab_add, tab_block, tab_list = st.tabs(
-        ["Add booking", "Block dates", "All bookings"], default=default_tab,
+    tab_add, tab_block, tab_list, tab_import = st.tabs(
+        ["Add booking", "Block dates", "All bookings", "Import property workbook"], default=default_tab,
     )
     with tab_add:
         with st.form("new_booking", clear_on_submit=True):
@@ -1120,6 +1125,84 @@ elif page == "Bookings":
                 delete_reservation(delete_id); st.rerun()
         else:
             st.info("No bookings yet. Add your first booking to get started.")
+
+    with tab_import:
+        st.markdown("### Import a property from Excel")
+        st.caption("Use this for your real listing data. The workbook is validated before saving, and the new property is private to your signed-in account.")
+        st.download_button(
+            "Download property import template",
+            data=TEMPLATE_XLSX,
+            file_name="staywise-property-import-template.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download_property_import_template",
+        )
+        if READ_ONLY:
+            st.info("Sign in with your Google account to import private property information. The public walkthrough only uses fictional records.")
+        else:
+            uploaded_workbook = st.file_uploader(
+                "Upload the completed StayWise workbook",
+                type=["xlsx"],
+                accept_multiple_files=False,
+                max_upload_size=5,
+                key="property_import_workbook",
+                help="Fill the Property sheet and any optional Bookings, Blocked Dates, and Comparables rows.",
+            )
+            if uploaded_workbook is not None:
+                parsed_import, import_errors = parse_property_import_workbook(uploaded_workbook.getvalue())
+                if import_errors:
+                    st.error("Please fix these workbook items before importing:")
+                    for import_error in import_errors:
+                        st.write(f"• {import_error}")
+                elif parsed_import:
+                    prop = parsed_import["property"]
+                    st.success("Workbook looks good. Review the new property and records before saving.")
+                    st.write(f"**{prop['name']}** · {prop['neighborhood']}, {prop['city']} · {prop['bedrooms']} bedrooms · sleeps {prop['capacity']}")
+                    count_cols = st.columns(3)
+                    count_cols[0].metric("Bookings", len(parsed_import["bookings"]))
+                    count_cols[1].metric("Blocked date ranges", len(parsed_import["blocked_dates"]))
+                    count_cols[2].metric("Comparables", len(parsed_import["comparables"]))
+                    st.caption("Guest details remain in your private account. No fictional bookings will be added to an imported property.")
+                    if st.button("Add this house and import data", type="primary", disabled=READ_ONLY, key="commit_property_import"):
+                        new_property_id = None
+                        try:
+                            new_property_id = add_property({
+                                "name": prop["name"],
+                                "area": area_with_city(prop["neighborhood"], prop["city"]),
+                                "bedrooms": prop["bedrooms"],
+                                "capacity": prop["capacity"],
+                                "latitude": prop["latitude"],
+                                "longitude": prop["longitude"],
+                                "airbnb_url": prop["airbnb_url"],
+                                "booking_url": prop["booking_url"],
+                                "sample_data_enabled": False,
+                            })
+                            update_property_stay_hours(new_property_id, prop["check_in_time"], prop["check_out_time"])
+                            for blocked in parsed_import["blocked_dates"]:
+                                add_blocked_dates(blocked["start_date"], blocked["end_date"], blocked["reason"], new_property_id)
+                            for comparable in parsed_import["comparables"]:
+                                add_comparable({**comparable, "property_id": new_property_id})
+                            if parsed_import["bookings"]:
+                                add_reservations_batch([
+                                    {**booking, "property_id": new_property_id}
+                                    for booking in parsed_import["bookings"]
+                                ])
+                        except Exception as exc:
+                            if new_property_id is not None:
+                                try:
+                                    delete_property(new_property_id)
+                                except Exception:
+                                    st.error("The import did not finish, and automatic cleanup could not be confirmed. Check your rental portfolio before retrying.")
+                                    st.caption(f"Import error: {type(exc).__name__}")
+                                    st.stop()
+                            st.error("The import could not be saved. No partial property should remain; correct the workbook or try again.")
+                            st.caption(f"Import error: {type(exc).__name__}")
+                        else:
+                            seeded_ids = set(st.session_state.get("_staywise_demo_seeded_properties", set()))
+                            seeded_ids.add(int(new_property_id))
+                            st.session_state["_staywise_demo_seeded_properties"] = seeded_ids
+                            st.session_state["pending_property_id"] = int(new_property_id)
+                            st.success("Property and workbook data imported.")
+                            st.rerun()
 
 
 elif page == "Calendar":
