@@ -4,6 +4,7 @@ import calendar
 import math
 import os
 import re
+import random
 from datetime import date, datetime, time, timedelta
 from html import escape
 
@@ -15,7 +16,7 @@ from streamlit_folium import st_folium
 
 from staywise.calculations import competitor_summary, date_ranges_overlap, validate_reservation
 from staywise.auth import auth_is_configured, current_user, sign_in, sign_out
-from staywise.database import (add_blocked_dates, add_comparable, add_property, add_reservation,
+from staywise.database import (add_blocked_dates, add_comparable, add_property, add_reservation, add_reservations_batch,
                                complete_checkout_cleaning, get_checkout_cleanings, schedule_checkout_cleaning,
                                delete_blocked_dates, delete_comparable, delete_property, delete_reservation,
                                get_blocked_dates, get_comparables, get_property_workspace_data,
@@ -154,44 +155,144 @@ DEMO_PROPERTY_ALIASES = {
 
 
 def seed_fictional_property(property_id: int, city: str, bedrooms: int, capacity: int, latitude: float, longitude: float) -> None:
-    """Give a newly added home fictional bookings, a block, and map-ready comps."""
+    """Idempotently add clearly labeled, plausible demo activity to a rental."""
     today = date.today()
-    guest_names = ["Alex Example", "Jamie Sample", "Taylor Demo", "Morgan Fiction", "Riley Sample"]
-    stay_number = 0
-    for month in range(1, 13):
-        month_start = date(today.year, month, 1)
-        month_days = calendar.monthrange(today.year, month)[1]
-        for offset in range(0, month_days, 5):
-            checkin = month_start + timedelta(days=offset)
-            checkout = checkin + timedelta(days=min(3, month_days - offset))
-            stay_number += 1
-            add_reservation({
-                "guest_name": guest_names[stay_number % len(guest_names)],
-                "email": f"guest{stay_number}@example.test", "phone": "+351 900 000 000",
-                "checkin": checkin.isoformat(), "checkout": checkout.isoformat(),
-                "guests": min(2, capacity), "nightly_rate": 150 if month in {6, 7, 8, 9} else 112,
-                "status": "completed" if checkout <= today else "confirmed",
-                "source": "Airbnb (fictional sample)",
-                "notes": "Fictional sample booking for demonstration; not a real guest.",
-                "property_id": property_id,
+    reservations, blocks, comparables = get_property_workspace_data(property_id)
+    demo_reservations = [
+        item for item in reservations
+        if "fictional sample" in (str(item.get("source", "")) + " " + str(item.get("notes", ""))).casefold()
+    ]
+    demo_years = {date.fromisoformat(item["checkin"]).year for item in demo_reservations}
+    active_reservations = [
+        item for item in reservations if item.get("status") in {"confirmed", "completed"}
+    ]
+    reservation_batch = []
+    guest_names = [
+        "Alex Example", "Jamie Sample", "Taylor Demo", "Morgan Fiction",
+        "Riley Sample", "Casey Example", "Sam Demo", "Avery Sample",
+    ]
+    channels = ["Airbnb (fictional sample)", "Booking.com (fictional sample)", "Direct (fictional sample)"]
+    seasonal_factors = {
+        1: 0.78, 2: 0.82, 3: 0.90, 4: 1.00, 5: 1.08, 6: 1.22,
+        7: 1.34, 8: 1.32, 9: 1.15, 10: 1.00, 11: 0.86, 12: 0.96,
+    }
+    city_factor = 0.90 if city == "Porto" else 1.0
+    base_rate = (72 + 27 * max(0, bedrooms)) * city_factor
+
+    for year in range(max(2024, today.year - 2), today.year + 1):
+        if year in demo_years:
+            continue
+        rng = random.Random(f"staywise-demo-{property_id}-{year}")
+        year_end = date(year + 1, 1, 1)
+        checkin = date(year, 1, 1)
+        while checkin < year_end:
+            nights = rng.choices([2, 3, 4], weights=[2, 5, 2], k=1)[0]
+            checkout = checkin + timedelta(days=nights)
+            if checkout <= year_end:
+                candidate_range = (checkin, checkout)
+                overlaps_booking = any(
+                    date_ranges_overlap(
+                        candidate_range[0], candidate_range[1],
+                        date.fromisoformat(item["checkin"]), date.fromisoformat(item["checkout"]),
+                    )
+                    for item in active_reservations
+                )
+                overlaps_block = any(
+                    date_ranges_overlap(
+                        candidate_range[0], candidate_range[1],
+                        date.fromisoformat(item["start_date"]), date.fromisoformat(item["end_date"]),
+                    )
+                    for item in blocks
+                )
+                if not overlaps_booking and not overlaps_block:
+                    seasonal = seasonal_factors[checkin.month]
+                    weekend = 1.12 if checkin.weekday() in {4, 5} else 1.0
+                    variation = rng.uniform(0.90, 1.12)
+                    nightly_rate = round(base_rate * seasonal * weekend * variation / 5) * 5
+                    item = {
+                        "guest_name": guest_names[rng.randrange(len(guest_names))],
+                        "email": f"sample{year}{checkin.timetuple().tm_yday:03d}@example.test",
+                        "phone": "+351 900 000 000",
+                        "checkin": checkin.isoformat(),
+                        "checkout": checkout.isoformat(),
+                        "guests": rng.randint(1, max(1, min(capacity, 4))),
+                        "nightly_rate": float(nightly_rate),
+                        "status": "completed" if checkout <= today else "confirmed",
+                        "source": channels[rng.randrange(len(channels))],
+                        "notes": "Fictional sample stay generated by StayWise; no real guest or booking.",
+                        "property_id": property_id,
+                    }
+                    reservation_batch.append(item)
+                    active_reservations.append(item)
+            checkin += timedelta(days=5)
+
+    if reservation_batch:
+        add_reservations_batch(reservation_batch)
+
+    if not any("fictional owner block" in str(item.get("reason", "")).casefold() for item in blocks):
+        block_start = today + timedelta(days=35)
+        for _ in range(30):
+            block_end = block_start + timedelta(days=3)
+            booking_overlap = any(
+                item.get("status") in {"confirmed", "completed"}
+                and date_ranges_overlap(
+                    block_start, block_end,
+                    date.fromisoformat(item["checkin"]), date.fromisoformat(item["checkout"]),
+                )
+                for item in active_reservations
+            )
+            block_overlap = any(
+                date_ranges_overlap(
+                    block_start, block_end,
+                    date.fromisoformat(item["start_date"]), date.fromisoformat(item["end_date"]),
+                )
+                for item in blocks
+            )
+            if not booking_overlap and not block_overlap:
+                add_blocked_dates(
+                    block_start.isoformat(), block_end.isoformat(),
+                    "Fictional owner block · sample data", property_id,
+                )
+                break
+            block_start += timedelta(days=7)
+
+    has_demo_comparables = any(
+        "fictional comparison" in str(item.get("notes", "")).casefold()
+        for item in comparables
+    )
+    if not has_demo_comparables:
+        city_label = "Porto" if city == "Porto" else "Lisbon"
+        themes = [
+            ("Sunny balcony apartment", "balcony, lift, renovated kitchen"),
+            ("Quiet courtyard flat", "courtyard outlook, air conditioning"),
+            ("Family city residence", "family layout, equipped kitchen"),
+            ("Design-led neighborhood home", "modern decor, fast Wi-Fi"),
+            ("Classic central apartment", "period details, walkable location"),
+            ("Bright weekend stay", "natural light, workspace"),
+            ("Comfortable extended-stay flat", "washer, full kitchen"),
+            ("Boutique-style city retreat", "premium furnishings, balcony"),
+        ]
+        rng = random.Random(f"staywise-market-{property_id}")
+        for index, (name, features) in enumerate(themes):
+            distance = [0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.6, 1.8][index]
+            angle = (index * 45 + 20) * math.pi / 180
+            comp_lat = latitude + distance * math.cos(angle) / 111.32
+            comp_lon = longitude + distance * math.sin(angle) / (111.32 * max(0.2, math.cos(math.radians(latitude))))
+            comp_bedrooms = max(0, min(30, bedrooms + rng.choice([-1, 0, 0, 1])))
+            comp_capacity = max(1, min(100, capacity + rng.choice([-1, 0, 1])))
+            rate = round(base_rate * rng.uniform(0.88, 1.22) / 5) * 5
+            rating = rng.uniform(4.62, 4.97)
+            add_comparable({
+                "name": name, "area": f"{city_label} · fictional sample",
+                "bedrooms": comp_bedrooms, "capacity": comp_capacity,
+                "distance_km": distance, "nightly_rate": float(rate),
+                "observed_date": today.isoformat(), "url": "",
+                "notes": f"Fictional comparison for demonstration; sample rating {rating:.2f}/5; features: {features}.",
+                "selected": 1, "property_id": property_id,
+                "latitude": comp_lat, "longitude": comp_lon,
             })
-    blocked_start = today + timedelta(days=70)
-    add_blocked_dates(blocked_start.isoformat(), (blocked_start + timedelta(days=3)).isoformat(),
-                      "Sample owner stay · fictional", property_id)
-    city_label = "Porto" if city == "Porto" else "Lisbon"
-    for name, distance, rate, dlat, dlon in [
-        ("Fictional apartment with balcony", 0.4, 138, 0.0030, 0.0020),
-        ("Fictional renovated home", 0.8, 152, -0.0040, 0.0030),
-        ("Fictional courtyard stay", 1.1, 145, 0.0020, -0.0080),
-    ]:
-        add_comparable({
-            "name": name, "area": f"{city_label} · fictional sample",
-            "bedrooms": bedrooms, "capacity": capacity, "distance_km": distance,
-            "nightly_rate": rate, "observed_date": today.isoformat(), "url": "",
-            "notes": "Fictional comparison for demonstration; not a real listing.",
-            "selected": 1, "property_id": property_id,
-            "latitude": latitude + dlat, "longitude": longitude + dlon,
-        })
+
+
 
 
 auth_configured = auth_is_configured()
@@ -541,10 +642,41 @@ with st.sidebar:
     else:
         st.caption("Private local database")
 
+# Older portfolios may predate automatic sample generation. Backfill each home once per signed-in session.
+demo_seed_scope = auth_user["id"] if auth_user else "local"
+if st.session_state.get("_staywise_demo_seed_scope") != demo_seed_scope:
+    st.session_state["_staywise_demo_seed_scope"] = demo_seed_scope
+    st.session_state["_staywise_demo_seeded_properties"] = set()
+seeded_property_ids = st.session_state.get("_staywise_demo_seeded_properties", set())
+for demo_property in properties:
+    demo_property_id = int(demo_property["id"])
+    if demo_property_id in seeded_property_ids:
+        continue
+    try:
+        seed_fictional_property(
+            demo_property_id,
+            city_for_area(demo_property.get("area", "")),
+            int(demo_property.get("bedrooms", 2)),
+            int(demo_property.get("capacity", 4)),
+            float(demo_property.get("latitude", 38.719)),
+            float(demo_property.get("longitude", -9.165)),
+        )
+        seeded_property_ids.add(demo_property_id)
+    except Exception as exc:
+        st.warning(f"Could not complete fictional sample data for {demo_property.get('name', 'this rental')}: {type(exc).__name__}. Existing records are unchanged.")
+st.session_state["_staywise_demo_seeded_properties"] = seeded_property_ids
+
 settings = {**settings, "property_name": active_property["name"], "property_area": active_property["area"],
             "bedrooms": str(active_property["bedrooms"]), "capacity": str(active_property["capacity"]),
             "latitude": str(active_property["latitude"]), "longitude": str(active_property["longitude"])}
 reservations, blocks, comps = get_property_workspace_data(active_property_id)
+has_fictional_activity = (
+    any("fictional sample" in (str(item.get("source", "")) + " " + str(item.get("notes", ""))).casefold() for item in reservations)
+    or any("fictional" in str(item.get("reason", "")).casefold() for item in blocks)
+    or any("fictional" in str(item.get("notes", "")).casefold() for item in comps)
+)
+if has_fictional_activity:
+    st.info("This rental includes clearly labeled fictional sample stays, blocked dates, and market comparisons for demonstration. They are not real bookings or listings.")
 
 def property_stay_time(field: str) -> time | None:
     value = active_property.get(field)
@@ -1168,6 +1300,40 @@ elif page == "Market":
                 st.caption("Check the source page for current data files or try again later.")
     else:
         st.caption("Load the public listing snapshot when you want to refresh your comparison. The download is cached for 24 hours.")
+        if comps:
+            st.subheader("Fictional neighborhood preview")
+            st.caption("Sample competitor pins and rates are generated for demonstration. Load the Inside Airbnb snapshot above for current public listings.")
+            home_lat, home_lon = float(settings["latitude"]), float(settings["longitude"])
+            demo_map = folium.Map(location=[home_lat, home_lon], zoom_start=14, tiles="OpenStreetMap",
+                                  control_scale=True, scrollWheelZoom=True, prefer_canvas=True)
+            folium.Circle(location=[home_lat, home_lon], radius=radius_km * 1000,
+                          color="#16877E", weight=2, fill=True, fill_color="#16877E",
+                          fill_opacity=0.05).add_to(demo_map)
+            folium.Marker([home_lat, home_lon], tooltip="Your property",
+                          icon=folium.Icon(color="darkgreen", icon="home", prefix="fa")).add_to(demo_map)
+            for comp_index, comp in enumerate(comps):
+                comp_lat, comp_lon = comp.get("latitude"), comp.get("longitude")
+                if comp_lat is None or comp_lon is None:
+                    continue
+                if float(comp.get("distance_km", 0)) > radius_km:
+                    continue
+                name = escape(str(comp.get("name", "Fictional comparison")))
+                note = escape(str(comp.get("notes", "")))
+                popup = (f"<div style='font-family:Arial,sans-serif'><strong>{name}</strong>"
+                         f"<br>€{float(comp['nightly_rate']):,.0f} / night · {float(comp['distance_km']):.1f} km"
+                         f"<br><span>{note}</span><br><em>Fictional demo listing</em></div>")
+                folium.Marker(
+                    [float(comp_lat), float(comp_lon)],
+                    tooltip=folium.Tooltip(name, sticky=True),
+                    popup=folium.Popup(popup, max_width=300),
+                    icon=folium.DivIcon(
+                        html="<div style='width:13px;height:13px;border:2px solid white;border-radius:50%;background:#526676;box-shadow:0 1px 5px #17324d66'></div>",
+                        icon_size=(17, 17), icon_anchor=(8, 8), class_name="",
+                    ),
+                ).add_to(demo_map)
+            folium.LayerControl(collapsed=True, position="topright").add_to(demo_map)
+            st_folium(demo_map, height=500, width=None, use_container_width=True,
+                      returned_objects=[], key=f"fictional_demo_map_{active_property_id}")
     market_city_label = city_for_area(active_property.get("area", ""))
     st.markdown(f"Data: [Inside Airbnb {market_city_label} listings]({SOURCE_PAGE}). This public dataset contains Airbnb listings only; Booking.com prices are not supplied.")
     st.subheader("Add a comparable listing")
