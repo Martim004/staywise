@@ -11,7 +11,7 @@ import pandas as pd
 
 
 SUPABASE_LIMIT_BYTES = 500 * 1024 * 1024
-RETENTION_NOTE = "Only the latest Lisbon listing snapshot is retained."
+RETENTION_NOTE = "The latest Lisbon and Porto listing snapshots are retained."
 
 
 def _secret(name: str) -> str:
@@ -169,14 +169,22 @@ def save_latest_snapshot(frame: pd.DataFrame, source_url: str, city: str = "Lisb
     }
 
 
-def _latest_on_url(url: str) -> tuple[pd.DataFrame, dict[str, Any]] | None:
+def _latest_on_url(url: str, city: str | None = None) -> tuple[pd.DataFrame, dict[str, Any]] | None:
     _ensure_schema(url)
     with _connect(url) as conn:
-        meta = conn.execute("""
-            SELECT id, city, source_url, downloaded_at, source_sha256, listing_count,
-                   payload_bytes, database_bytes
-            FROM staywise_inside_airbnb_snapshots ORDER BY downloaded_at DESC LIMIT 1
-        """).fetchone()
+        if city:
+            meta = conn.execute("""
+                SELECT id, city, source_url, downloaded_at, source_sha256, listing_count,
+                       payload_bytes, database_bytes
+                FROM staywise_inside_airbnb_snapshots
+                WHERE lower(city)=lower(%s) ORDER BY downloaded_at DESC LIMIT 1
+            """, (city,)).fetchone()
+        else:
+            meta = conn.execute("""
+                SELECT id, city, source_url, downloaded_at, source_sha256, listing_count,
+                       payload_bytes, database_bytes
+                FROM staywise_inside_airbnb_snapshots ORDER BY downloaded_at DESC LIMIT 1
+            """).fetchone()
         if not meta:
             return None
         rows = conn.execute("""
@@ -191,16 +199,15 @@ def _latest_on_url(url: str) -> tuple[pd.DataFrame, dict[str, Any]] | None:
     }
     return frame, metadata
 
-
-def load_latest_snapshot() -> tuple[pd.DataFrame, dict[str, Any]] | None:
-    """Read the newest saved snapshot from the configured provider(s)."""
+def load_latest_snapshot(city: str | None = None) -> tuple[pd.DataFrame, dict[str, Any]] | None:
+    """Read the newest saved snapshot for a city from the configured providers."""
     candidates = []
     errors = []
     for provider, url in database_urls().items():
         if not url:
             continue
         try:
-            result = _latest_on_url(url)
+            result = _latest_on_url(url, city)
             if result:
                 frame, metadata = result
                 metadata["provider"] = provider.capitalize()
