@@ -1120,8 +1120,15 @@ elif page == "Market":
                         folium.Marker([float(listing["latitude"]),float(listing["longitude"])], tooltip=folium.Tooltip(name, sticky=True),
                             popup=folium.Popup(popup_html,max_width=270),icon=icon).add_to(airbnb_group)
                     manual_group = folium.FeatureGroup(name="Manually added listings", show=True).add_to(competition_map)
-                    for comp in comps:
-                        if comp.get("latitude") is None or comp.get("longitude") is None or float(comp.get("distance_km",0)) > radius_km:
+                    for comp_index, comp in enumerate(comps):
+                        if float(comp.get("distance_km", 0)) > radius_km:
+                            continue
+                        comp_lat, comp_lon = comp.get("latitude"), comp.get("longitude")
+                        if (comp_lat is None or comp_lon is None) and "fictional sample" in str(comp.get("area", "")).casefold():
+                            sample_offsets = [(0.003, 0.002), (-0.004, 0.003), (0.002, -0.008)]
+                            offset_lat, offset_lon = sample_offsets[comp_index % len(sample_offsets)]
+                            comp_lat, comp_lon = home_lat + offset_lat, home_lon + offset_lon
+                        if comp_lat is None or comp_lon is None:
                             continue
                         manual_name = escape(str(comp["name"]))
                         external_url = str(comp.get("url", ""))
@@ -1129,7 +1136,7 @@ elif page == "Market":
                         manual_popup = f"<div style='font-family:Arial,sans-serif'><strong>{manual_name}</strong><br>€{float(comp['nightly_rate']):,.0f} / night"
                         if external_url.startswith(("https://", "http://")):
                             manual_popup += f"<br><a href='{safe_url}' target='_blank' rel='noopener noreferrer'>Open listing ↗</a>"
-                        folium.Marker([float(comp["latitude"]),float(comp["longitude"])],tooltip=folium.Tooltip(manual_name,sticky=True),
+                        folium.Marker([float(comp_lat),float(comp_lon)],tooltip=folium.Tooltip(manual_name,sticky=True),
                             popup=folium.Popup(manual_popup+"</div>",max_width=260),
                             icon=folium.DivIcon(html="<div style='width:13px;height:13px;border:2px solid white;border-radius:50%;background:#526676;box-shadow:0 1px 5px #17324d66'></div>",
                                 icon_size=(17,17),icon_anchor=(8,8),class_name="")).add_to(manual_group)
