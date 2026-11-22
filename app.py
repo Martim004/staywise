@@ -29,7 +29,8 @@ from staywise.inside_airbnb import LISBON_LISTINGS_URL, SOURCE_PAGE, listings_wi
 from staywise.postgres_store import database_urls, load_latest_snapshot, save_latest_snapshot
 from staywise.reports import build_revenue_workbook
 from staywise.workbook_import import parse_property_import_workbook
-from staywise.import_template_data import TEMPLATE_XLSX
+from staywise.airbnb_import import parse_airbnb_earnings_export
+from staywise.import_template_data import TEMPLATE_XLSX, AIRBNB_EARNINGS_TEMPLATE_XLSX
 
 LISTINGS_URL_BY_CITY = {
     "Lisbon": LISBON_LISTINGS_URL,
@@ -308,6 +309,141 @@ def seed_fictional_property(property_id: int, city: str, bedrooms: int, capacity
 
 
 
+def render_airbnb_report_import(existing_properties: list[dict], key_prefix: str) -> None:
+    """Import one Airbnb earnings-export listing into the private property workspace."""
+    st.markdown("### Import an Airbnb earnings export")
+    st.caption("Upload the populated Airbnb earnings report. StayWise imports reservation dates, guest details, currency, earnings, and fee details into your private account.")
+    st.download_button(
+        "Download the Airbnb export format",
+        data=AIRBNB_EARNINGS_TEMPLATE_XLSX,
+        file_name="airbnb-earnings-export-template.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key=f"{key_prefix}_airbnb_template",
+    )
+    st.caption("The downloaded file is a blank format guide. To import your bookings, upload the populated report from Airbnb. The report does not include property location/profile data, blocked dates, or competitor records.")
+    if READ_ONLY:
+        st.info("Sign in with Google to import private Airbnb data. The public walkthrough only uses fictional records.")
+        return
+    upload = st.file_uploader(
+        "Upload Airbnb earnings report (.xlsx or .csv)",
+        type=["xlsx", "csv"],
+        accept_multiple_files=False,
+        max_upload_size=5,
+        key=f"{key_prefix}_airbnb_upload",
+    )
+    if upload is None:
+        return
+    report, errors = parse_airbnb_earnings_export(upload.getvalue(), upload.name)
+    if errors:
+        st.error("This Airbnb report needs attention before import:")
+        for error in errors:
+            st.write(f"• {error}")
+        return
+    if not report:
+        st.error("No Airbnb reservation records were found.")
+        return
+
+    st.success(f"Report validated for **{report['listing_name']}**.")
+    st.caption(f"{len(report['bookings'])} reservations · EUR. Revenue uses Airbnb gross earnings, divided across each stay's nights; payout and fee details are saved in each booking's notes.")
+    target_options = ["__new_property__", *[int(item["id"]) for item in existing_properties]]
+    matching = next((int(item["id"]) for item in existing_properties
+                     if str(item.get("name", "")).strip().casefold() == report["listing_name"].strip().casefold()), None)
+    default_target = matching if matching is not None else "__new_property__"
+    target = st.selectbox(
+        "Import into",
+        target_options,
+        index=target_options.index(default_target),
+        format_func=lambda value: ("Create a new property" if value == "__new_property__"
+                                  else next(f"{p['name']} · #{p['id']}" for p in existing_properties if int(p["id"]) == value)),
+        key=f"{key_prefix}_airbnb_target",
+    )
+
+    new_property = target == "__new_property__"
+    if new_property:
+        p_name = st.text_input("Property name", value=report["listing_name"][:120], key=f"{key_prefix}_airbnb_name")
+        city = st.selectbox("City", list(LISTINGS_URL_BY_CITY), key=f"{key_prefix}_airbnb_city")
+        try:
+            neighborhoods = load_city_neighborhoods(city)
+            neighborhood = st.selectbox("Neighborhood", neighborhoods, key=f"{key_prefix}_airbnb_neighborhood")
+        except Exception:
+            neighborhood = st.text_input("Neighborhood", key=f"{key_prefix}_airbnb_neighborhood_manual")
+        meta1, meta2 = st.columns(2)
+        bedrooms = meta1.number_input("Bedrooms", min_value=0, max_value=30, value=2, key=f"{key_prefix}_airbnb_bedrooms")
+        capacity = meta2.number_input("Guest capacity", min_value=1, max_value=100, value=4, key=f"{key_prefix}_airbnb_capacity")
+        listing_url = st.text_input("Airbnb listing URL (optional)", key=f"{key_prefix}_airbnb_listing_url")
+        st.caption("The Airbnb earnings report has no address or map coordinates. The initial map position will be approximate for the selected city; you can refine it in property settings.")
+    else:
+        city = None
+        neighborhood = None
+        p_name = None
+        bedrooms = None
+        capacity = None
+        listing_url = None
+        st.caption("These reservations will be added to the selected property. Existing reservations with the same Airbnb confirmation code are skipped.")
+
+    if not st.button("Import Airbnb reservations", type="primary", key=f"{key_prefix}_airbnb_import"):
+        return
+
+    property_id = int(target) if not new_property else None
+    created_property = False
+    try:
+        if new_property:
+            if not str(p_name or "").strip() or not str(neighborhood or "").strip():
+                raise ValueError("Enter a property name and neighborhood.")
+            latitude, longitude = (41.1579, -8.6291) if city == "Porto" else (38.719, -9.165)
+            property_id = add_property({
+                "name": str(p_name).strip(),
+                "area": area_with_city(str(neighborhood), str(city)),
+                "bedrooms": int(bedrooms),
+                "capacity": int(capacity),
+                "latitude": latitude,
+                "longitude": longitude,
+                "airbnb_url": str(listing_url or "").strip(),
+                "booking_url": "",
+                "sample_data_enabled": False,
+            })
+            created_property = True
+
+        prior = get_reservations(property_id)
+        existing_codes = set()
+        for reservation in prior:
+            match = re.search(r"confirmation code ([^;]+)", str(reservation.get("notes", "")), re.I)
+            if match and str(reservation.get("source", "")).casefold().startswith("airbnb"):
+                existing_codes.add(match.group(1).strip().casefold())
+        to_import = [
+            {**booking, "property_id": property_id}
+            for booking in report["bookings"]
+            if not (re.search(r"confirmation code ([^;]+)", booking["notes"], re.I)
+                    and re.search(r"confirmation code ([^;]+)", booking["notes"], re.I).group(1).strip().casefold() in existing_codes)
+        ]
+        if to_import:
+            add_reservations_batch(to_import)
+    except Exception as exc:
+        if created_property and property_id is not None:
+            try:
+                delete_property(property_id)
+            except Exception:
+                st.error("Import failed and cleanup could not be confirmed. Check the property portfolio before retrying.")
+                st.caption(f"Import error: {type(exc).__name__}")
+                st.stop()
+        st.error(str(exc) if isinstance(exc, ValueError) else "The Airbnb report could not be saved. Check the selected property and try again.")
+        if not isinstance(exc, ValueError):
+            st.caption(f"Import error: {type(exc).__name__}")
+        return
+
+    if created_property:
+        seeded_ids = set(st.session_state.get("_staywise_demo_seeded_properties", set()))
+        seeded_ids.add(int(property_id))
+        st.session_state["_staywise_demo_seeded_properties"] = seeded_ids
+    st.session_state["pending_property_id"] = int(property_id)
+    if to_import:
+        st.success(f"Imported {len(to_import)} Airbnb reservations into {report['listing_name']}.")
+    else:
+        st.info("All reservations in this report were already imported; no duplicates were added.")
+    st.rerun()
+
+
+
 auth_configured = auth_is_configured()
 auth_user = current_user() if auth_configured else None
 local_development = os.getenv("STAYWISE_LOCAL_MODE", "").strip().lower() in {"1", "true", "yes"}
@@ -395,6 +531,8 @@ if not properties:
                 seed_fictional_property(new_id, new_city, int(new_bedrooms), int(new_capacity), float(new_lat), float(new_lon))
                 st.session_state["pending_property_id"] = new_id
                 st.rerun()
+    st.divider()
+    render_airbnb_report_import(properties, "first_rental")
     st.stop()
 
 def render_fictional_market_map(property_id: int, property_name: str, latitude: float,
@@ -1066,8 +1204,8 @@ elif page == "Bookings":
         st.info("No upcoming check-outs for this property.")
 
     default_tab = "Block dates" if st.session_state.pop("_open_block_dates_tab", False) else None
-    tab_add, tab_block, tab_list, tab_import = st.tabs(
-        ["Add booking", "Block dates", "All bookings", "Import property workbook"], default=default_tab,
+    tab_add, tab_block, tab_list, tab_import, tab_airbnb = st.tabs(
+        ["Add booking", "Block dates", "All bookings", "Import property workbook", "Import Airbnb report"], default=default_tab,
     )
     with tab_add:
         with st.form("new_booking", clear_on_submit=True):
@@ -1204,6 +1342,9 @@ elif page == "Bookings":
                             st.session_state["pending_property_id"] = int(new_property_id)
                             st.success("Property and workbook data imported.")
                             st.rerun()
+
+    with tab_airbnb:
+        render_airbnb_report_import(properties, "bookings")
 
 
 elif page == "Calendar":
