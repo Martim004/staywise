@@ -116,16 +116,16 @@ def build_excel_report(property_name: str, report: dict[str, Any], comparables: 
 
 
 def build_revenue_workbook(property_name: str, year: int, reservations: list[dict[str, Any]], as_of: date) -> bytes:
-    """Build a simple, cross-compatible workbook of recorded rental revenue."""
+    """Build a polished actual-revenue dashboard without spreadsheet formulas or tables."""
     from openpyxl.chart import BarChart, Reference
-    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 
     wb = Workbook()
-    summary = wb.active
-    summary.title = "Revenue Summary"
-    monthly_ws = wb.create_sheet("Monthly Revenue")
-    channel_ws = wb.create_sheet("By Booking Source")
+    dashboard = wb.active
+    dashboard.title = "Revenue Dashboard"
+    monthly_ws = wb.create_sheet("Monthly Summary")
+    channel_ws = wb.create_sheet("Channel Summary")
     daily_ws = wb.create_sheet("Daily Ledger")
     reservations_ws = wb.create_sheet("Reservations")
 
@@ -133,7 +133,7 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
     cutoff = min(as_of, date(year, 12, 31))
     end_exclusive = cutoff + timedelta(days=1)
     active_statuses = {"confirmed", "completed"}
-    days = [start + timedelta(days=i) for i in range((end_exclusive - start).days)]
+    days = [start + timedelta(days=i) for i in range(max(0, (end_exclusive - start).days))]
     daily_revenue = {day: 0.0 for day in days}
     daily_status = {day: "Available" for day in days}
     channel_totals: dict[str, dict[str, float]] = {}
@@ -169,117 +169,180 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
                 elif status == "cancelled" and daily_status[day] == "Available":
                     daily_status[day] = "Cancelled"
 
-    gross = sum(daily_revenue.values())
-    booked_nights = sum(status == "Booked" for status in daily_status.values())
-    summary.append(["StayWise revenue report"])
-    summary.append(["Property", property_name])
-    summary.append(["Selected year", year])
-    summary.append(["Report through", cutoff])
-    summary.append(["Currency", "EUR"])
-    summary.append([""])
-    summary.append(["Metric", "Value", "Definition"])
-    summary.append(["Gross recorded revenue (€)", gross, "Confirmed and completed booking nights"])
-    summary.append(["Booked nights", booked_nights, "Distinct calendar nights marked as booked"])
-    summary.append(["Active stays", active_stays, "Confirmed and completed stays overlapping the reporting period"])
-    summary.append(["Average revenue per booked night (€)", gross / booked_nights if booked_nights else 0, "Gross revenue divided by booked nights"])
-    summary.append([""])
-    summary.append(["Cancelled stays and future nights are excluded from revenue."])
-
-    monthly_ws.append(["Month", "Calendar nights in period", "Booked nights", "Gross revenue (€)", "Average nightly rate (€)", "Occupancy"])
+    monthly = []
     for month in range(1, 13):
-        month_start = date(year, month, 1)
-        next_month = date(year + (month == 12), month % 12 + 1, 1)
-        period_days = [day for day in days if month_start <= day < next_month]
-        count_days = len(period_days)
-        month_booked = sum(daily_status[day] == "Booked" for day in period_days)
-        month_gross = sum(daily_revenue[day] for day in period_days)
-        monthly_ws.append([
-            month_start.strftime("%B"), count_days, month_booked, month_gross,
-            month_gross / month_booked if month_booked else 0,
-            month_booked / count_days if count_days else 0,
-        ])
+        month_days = [day for day in days if day.month == month]
+        booked = sum(daily_status[day] == "Booked" for day in month_days)
+        revenue = sum(daily_revenue[day] for day in month_days)
+        monthly.append((month_days, booked, revenue, revenue / booked if booked else 0,
+                        booked / len(month_days) if month_days else 0))
+    gross = sum(row[2] for row in monthly)
+    booked_nights = sum(row[1] for row in monthly)
+    avg_rate = gross / booked_nights if booked_nights else 0
 
-    channel_ws.append(["Booking source", "Active stays", "Gross revenue (€)"])
-    channels = sorted(channel_totals, key=str.casefold) or ["No booking sources"]
-    for channel in channels:
-        totals = channel_totals.get(channel, {"stays": 0, "revenue": 0.0})
-        channel_ws.append([channel, int(totals["stays"]), float(totals["revenue"])])
+    navy, teal, pale, stripe, muted = NAVY, TEAL, "EAF3F2", "F3F7F8", "526676"
+    white, gold = "FFFFFF", "D89B43"
+    thin_white = Side(style="thin", color=white)
+    card_border = Border(bottom=Side(style="medium", color="D6E2E7"))
+
+    # Dashboard cover: KPI cards are saved values, and both charts read plain numeric cells.
+    dashboard.sheet_view.showGridLines = False
+    dashboard.merge_cells("A1:L1")
+    dashboard["A1"] = "STAYWISE  |  REVENUE DASHBOARD"
+    dashboard["A1"].fill = PatternFill("solid", fgColor=navy)
+    dashboard["A1"].font = Font(name="Aptos Display", size=20, bold=True, color=white)
+    dashboard["A1"].alignment = Alignment(vertical="center")
+    dashboard.row_dimensions[1].height = 38
+    dashboard.merge_cells("A2:L2")
+    dashboard["A2"] = _excel_safe(property_name)
+    dashboard["A2"].font = Font(name="Aptos Display", size=15, bold=True, color=teal)
+    dashboard["A2"].alignment = Alignment(vertical="center")
+    dashboard.row_dimensions[2].height = 28
+    dashboard.merge_cells("A3:L3")
+    period = f"{year} year to date through {cutoff.isoformat()}" if year == as_of.year else f"Full year {year}"
+    dashboard["A3"] = f"{period}  ·  EUR  ·  confirmed and completed stays"
+    dashboard["A3"].font = Font(name="Aptos", size=10, italic=True, color=muted)
+    dashboard["A3"].alignment = Alignment(vertical="center")
+    dashboard.row_dimensions[3].height = 22
+
+    cards = [
+        ("A5:C5", "A6:C7", "GROSS REVENUE", gross, "Confirmed and completed nights"),
+        ("D5:F5", "D6:F7", "BOOKED NIGHTS", booked_nights, "Unique nights with a stay"),
+        ("G5:I5", "G6:I7", "ACTIVE STAYS", active_stays, "Reservations in the selected period"),
+        ("J5:L5", "J6:L7", "AVERAGE NIGHTLY REVENUE", avg_rate, "Gross revenue per booked night"),
+    ]
+    for label_range, value_range, label, value, note in cards:
+        dashboard.merge_cells(label_range)
+        dashboard.merge_cells(value_range)
+        label_cell = dashboard[label_range.split(":")[0]]
+        value_cell = dashboard[value_range.split(":")[0]]
+        label_cell.value = label
+        value_cell.value = value
+        for row in dashboard[label_range.split(":")[0]].row, dashboard[value_range.split(":")[0]].row:
+            for col in range(dashboard[label_range.split(":")[0]].column,
+                             dashboard[label_range.split(":")[1]].column + 1):
+                cell = dashboard.cell(row=row, column=col)
+                cell.fill = PatternFill("solid", fgColor=teal if label == "GROSS REVENUE" else pale)
+                cell.border = card_border if label != "GROSS REVENUE" else Border()
+        label_cell.font = Font(name="Aptos", size=9, bold=True, color=white if label == "GROSS REVENUE" else muted)
+        label_cell.alignment = Alignment(vertical="center")
+        value_cell.font = Font(name="Aptos Display", size=21, bold=True, color=white if label == "GROSS REVENUE" else navy)
+        value_cell.alignment = Alignment(vertical="center")
+        value_cell.number_format = '€#,##0.00;[Red]-€#,##0.00' if "REVENUE" in label else "0"
+    dashboard.row_dimensions[5].height = 23
+    dashboard.row_dimensions[6].height = 25
+    dashboard.row_dimensions[7].height = 22
+    dashboard.merge_cells("A8:L8")
+    dashboard["A8"] = "Monthly revenue and booking channel mix"
+    dashboard["A8"].font = Font(name="Aptos", size=11, bold=True, color=navy)
+    dashboard["A8"].alignment = Alignment(vertical="center")
+    dashboard.row_dimensions[8].height = 25
+    for col in range(1, 13):
+        dashboard.column_dimensions[get_column_letter(col)].width = 12
+
+    monthly_ws.append(["Month", "Calendar nights", "Booked nights", "Gross revenue (€)", "Average nightly revenue (€)", "Occupancy"])
+    for month, (month_days, nights, revenue, nightly, occupancy) in enumerate(monthly, start=1):
+        monthly_ws.append([date(year, month, 1).strftime("%B"), len(month_days), nights, revenue, nightly, occupancy])
+
+    channel_ws.append(["Booking source", "Active stays", "Gross revenue (€)", "Share of revenue"])
+    sources = sorted(channel_totals, key=lambda name: (-channel_totals[name]["revenue"], name.casefold()))
+    if not sources:
+        sources = ["No recorded revenue"]
+    for source in sources:
+        totals = channel_totals.get(source, {"stays": 0, "revenue": 0.0})
+        revenue = totals["revenue"]
+        channel_ws.append([_excel_safe(source), int(totals["stays"]), revenue, revenue / gross if gross else 0])
 
     daily_ws.append(["Night", "Weekday", "Gross revenue (€)", "Status"])
     for day in days:
         daily_ws.append([day, day.strftime("%A"), daily_revenue[day], daily_status[day]])
 
-    reservation_headers = [
+    reservations_ws.append([
         "Booking ID", "Guest", "Email", "Phone", "Check-in", "Check-out",
-        "Nights in selected year", "Guests", "Nightly rate (€)",
-        "Revenue in selected year (€)", "Status", "Booking source", "Notes",
-    ]
-    reservations_ws.append(reservation_headers)
+        "Nights in selected year", "Guests", "Nightly rate (€)", "Revenue in selected year (€)",
+        "Status", "Booking source", "Notes",
+    ])
     for item, checkin, checkout, nights, rate, status, source, earned in included:
         reservations_ws.append([
-            item.get("id"), item.get("guest_name"), item.get("email"), item.get("phone"),
+            _excel_safe(item.get("id")), _excel_safe(item.get("guest_name")),
+            _excel_safe(item.get("email")), _excel_safe(item.get("phone")),
             checkin, checkout, nights, item.get("guests"), rate, earned,
-            status, source, item.get("notes"),
+            _excel_safe(status.title()), _excel_safe(source), _excel_safe(item.get("notes")),
         ])
     if reservations_ws.max_row == 1:
         reservations_ws.append(["", "No stays overlap this reporting period"])
 
-    navy_fill = PatternFill("solid", fgColor=NAVY)
-    stripe_fill = PatternFill("solid", fgColor="F3F7F8")
-    for ws in wb.worksheets:
+    # Native, formula-free Excel charts use the saved numeric values above.
+    monthly_chart = BarChart()
+    monthly_chart.type = "col"
+    monthly_chart.style = 10
+    monthly_chart.title = f"Gross revenue by month · {year}"
+    monthly_chart.y_axis.title = "EUR"
+    monthly_chart.x_axis.title = "Month"
+    monthly_chart.height, monthly_chart.width = 8, 13
+    monthly_chart.add_data(Reference(monthly_ws, min_col=4, min_row=1, max_row=13), titles_from_data=True)
+    monthly_chart.set_categories(Reference(monthly_ws, min_col=1, min_row=2, max_row=13))
+    monthly_chart.series[0].graphicalProperties.solidFill = teal
+    dashboard.add_chart(monthly_chart, "A10")
+
+    channel_chart = BarChart()
+    channel_chart.type = "bar"
+    channel_chart.style = 11
+    channel_chart.title = "Revenue by booking source"
+    channel_chart.x_axis.title = "EUR"
+    channel_chart.y_axis.title = "Source"
+    channel_chart.height, channel_chart.width = 8, 13
+    channel_chart.add_data(
+        Reference(channel_ws, min_col=3, min_row=1, max_row=channel_ws.max_row),
+        titles_from_data=True,
+    )
+    channel_chart.set_categories(
+        Reference(channel_ws, min_col=1, min_row=2, max_row=channel_ws.max_row)
+    )
+    channel_chart.series[0].graphicalProperties.solidFill = gold
+    dashboard.add_chart(channel_chart, "G10")
+    dashboard.freeze_panes = "A5"
+    dashboard.sheet_properties.tabColor = teal
+    dashboard.merge_cells("A27:L27")
+    dashboard["A27"] = "Revenue totals below are saved as values for this download; re-download after changing the selected year or bookings."
+    dashboard["A27"].font = Font(name="Aptos", size=9, italic=True, color=muted)
+    dashboard["A27"].alignment = Alignment(wrap_text=True, vertical="center")
+    dashboard.row_dimensions[27].height = 28
+
+    # Format the clear, filter-friendly detail sheets without Excel table objects.
+    for ws in (monthly_ws, channel_ws, daily_ws, reservations_ws):
         ws.sheet_view.showGridLines = False
-        ws.freeze_panes = "A2" if ws is not summary else "A7"
-        if ws.max_row > 1 and ws is not summary:
-            ws.auto_filter.ref = ws.dimensions
-        ws.sheet_properties.tabColor = TEAL if ws is summary else NAVY
+        ws.freeze_panes = "A2"
+        ws.sheet_properties.tabColor = navy
         for cell in ws[1]:
-            cell.fill = navy_fill
-            cell.font = Font(color="FFFFFF", bold=True)
+            cell.fill = PatternFill("solid", fgColor=navy)
+            cell.font = Font(name="Aptos", color=white, bold=True)
             cell.alignment = Alignment(vertical="center", wrap_text=True)
-        ws.row_dimensions[1].height = 28
+        ws.row_dimensions[1].height = 30
         for row in ws.iter_rows(min_row=2):
-            for cell in row:
-                if cell.row % 2 == 0:
-                    cell.fill = stripe_fill
+            if row[0].row % 2 == 0:
+                for cell in row:
+                    cell.fill = PatternFill("solid", fgColor=stripe)
         for col_idx in range(1, ws.max_column + 1):
             cells = [ws.cell(row=r, column=col_idx) for r in range(1, min(ws.max_row, 500) + 1)]
             max_len = max((len(str(cell.value or "")) for cell in cells), default=12)
             ws.column_dimensions[get_column_letter(col_idx)].width = min(max(max_len + 2, 14), 38)
 
-    summary["B8"].number_format = '€#,##0.00;[Red]-€#,##0.00'
-    summary["B11"].number_format = '€#,##0.00;[Red]-€#,##0.00'
     for row in monthly_ws.iter_rows(min_row=2):
         row[3].number_format = '€#,##0.00;[Red]-€#,##0.00'
         row[4].number_format = '€#,##0.00;[Red]-€#,##0.00'
         row[5].number_format = "0.0%"
-    for ws, col in ((channel_ws, 3), (daily_ws, 3), (reservations_ws, 9), (reservations_ws, 10)):
-        for cells in ws.iter_rows(min_row=2, min_col=col, max_col=col):
-            cells[0].number_format = '€#,##0.00;[Red]-€#,##0.00'
+    for row in channel_ws.iter_rows(min_row=2):
+        row[2].number_format = '€#,##0.00;[Red]-€#,##0.00'
+        row[3].number_format = "0.0%"
     for row in daily_ws.iter_rows(min_row=2):
         row[0].number_format = "dd mmm yyyy"
+        row[2].number_format = '€#,##0.00;[Red]-€#,##0.00'
     for row in reservations_ws.iter_rows(min_row=2):
         row[4].number_format = "dd mmm yyyy"
         row[5].number_format = "dd mmm yyyy"
-
-    # A single basic Excel column chart reads the populated monthly values.
-    # No worksheet formulas or Excel table objects are used in this workbook.
-    revenue_chart = BarChart()
-    revenue_chart.type = "col"
-    revenue_chart.style = 10
-    revenue_chart.title = "Gross revenue by month"
-    revenue_chart.y_axis.title = "EUR"
-    revenue_chart.x_axis.title = "Month"
-    revenue_chart.height = 8
-    revenue_chart.width = 16
-    revenue_chart.add_data(
-        Reference(monthly_ws, min_col=4, min_row=1, max_row=13),
-        titles_from_data=True,
-    )
-    revenue_chart.set_categories(
-        Reference(monthly_ws, min_col=1, min_row=2, max_row=13)
-    )
-    revenue_chart.series[0].graphicalProperties.solidFill = TEAL
-    summary.add_chart(revenue_chart, "A16")
+        row[8].number_format = '€#,##0.00;[Red]-€#,##0.00'
+        row[9].number_format = '€#,##0.00;[Red]-€#,##0.00'
 
     output = BytesIO()
     wb.save(output)
