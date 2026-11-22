@@ -1477,7 +1477,7 @@ elif page == "Revenue":
         start, end = selected_day, selected_day + timedelta(days=1)
         period_label = selected_day.strftime("%A, %d %B %Y")
         period_values = booked_revenue_by_day(reservations, start, end)
-        chart_start, chart_end = selected_day - timedelta(days=6), selected_day + timedelta(days=1)
+        chart_start, chart_end = max(year_start, selected_day - timedelta(days=6)), selected_day + timedelta(days=1)
         chart_values = booked_revenue_by_day(reservations, chart_start, chart_end)
         chart_title = "A little context around your day"
         chart_note = "Daily gross across the 7 days ending on your selected date"
