@@ -10,7 +10,7 @@ StayWise helps a short-term rental owner manage multiple homes and their stays, 
 - Team members and student numbers: **Add all names and student numbers before course submission.**
 - Repository: https://github.com/Martim004/staywise
 
-The public walkthrough includes a protected **Casa T2 do Campo de Ourique** example with fictional guest bookings at roughly 60% occupancy, a blocked owner stay, and three fictional comparables. Its data is isolated to each browser session. Visitors can add and remove extra properties; the built-in example stays available, and guest records cannot be edited. Never commit real guest details or a local database file.
+The deployed app requires Google sign-in. Every Google account that completes the sign-in flow receives a private portfolio containing a fictional **Casa T2 do Campo de Ourique** example with sample bookings, a blocked owner stay, and fictional comparables. Each user's portfolio is isolated by Supabase RLS. Added Lisbon and Porto rentals also receive fictional demo bookings, a blocked period, and map-ready comparisons. Never commit real guest details or a local database file.
 
 ## Run locally
 
@@ -27,7 +27,7 @@ The local app stores data in `data/staywise.sqlite3`. That directory is excluded
 
 ## Security
 
-- Private deployments fail closed unless Google sign-in is configured. Local SQLite development requires the explicit `STAYWISE_LOCAL_MODE=1` opt-in.
+- The deployed app fails closed unless Google sign-in is configured. Any verified Google account can create its own isolated portfolio; no rental data is loaded before sign-in. Local SQLite development requires the explicit `STAYWISE_LOCAL_MODE=1` opt-in.
 - PostgreSQL uses authenticated roles and row-level security scoped to the verified Google subject; child records must reference a property owned by the same user.
 - Application and database checks bound dates, rates, counts, text lengths, URLs, and CSV upload size/row count.
 - CSV and Excel exports escape formula-like text; PDF output escapes user-provided markup.
@@ -53,7 +53,7 @@ python -m unittest discover -s tests
 - Manual comparable records for Booking.com or other sources, since Inside Airbnb publishes Airbnb data only.
 - Revenue views for a chosen night, a chosen month, and current-year-to-date. Revenue is actual booked gross nightly revenue, not a projection.
 - Revenue Excel workbook with a KPI dashboard and chart, monthly summary, daily ledger, and reservation detail.
-- Fictional Campo de Ourique sample home, bookings, blocked dates, and comparisons for hands-on demos, isolated by visitor session.
+- Fictional Campo de Ourique example and generated sample data for every signed-in account. Added homes in Lisbon and Porto get their own demo bookings, blocked dates, comparison map pins, calendar entries, and revenue records.
 - PostgreSQL snapshot storage for the full Inside Airbnb Lisbon detailed listings file. Only the latest city snapshot is retained; the CSV's original columns are kept in JSONB.
 
 The Inside Airbnb public snapshot is downloaded on request and cached for 24 hours. Prices are observations from that snapshot, not live booking quotes. Comparisons use straight-line distance and should be interpreted as market context, not an exact price prediction. Airbnb and Booking.com links open the owner's listing page; StayWise does not currently connect accounts or sync reservations directly. Airbnb API-connected software access and Booking.com connectivity require approved partner / property connections. Source: [Inside Airbnb data](https://insideairbnb.com/pt/get-the-data/).
@@ -103,9 +103,9 @@ Revenue forecasting, expected-revenue summaries, and PDF reports are not include
 
 Dates use `YYYY-MM-DD`. Status must be `confirmed`, `completed`, or `cancelled`. Check-out is exclusive: a three-night stay from June 12 through June 15 occupies the nights of June 12, 13, and 14.
 
-## Public demo deployment
+## Signed-in deployment
 
-The demo is deployed from this public GitHub repository on [Streamlit Community Cloud](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app). In Advanced settings, `STAYWISE_DEMO = "1"` is configured in Secrets TOML. Visitors can create session-only fictional property profiles; guest and reservation data entry is blocked. Never deploy personal guest records.
+The app is deployed from this public GitHub repository on [Streamlit Community Cloud](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app). Sign-in is required before rental data loads. Remove the legacy `STAYWISE_DEMO` secret from Streamlit Cloud. Never deploy personal guest records.
 
 ## Project structure
 
