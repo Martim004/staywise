@@ -7,11 +7,26 @@ import math
 import pandas as pd
 
 
-LISBON_LISTINGS_URL = (
-    "https://data.insideairbnb.com/portugal/lisbon/lisbon/2026-09-19/"
-    "data/listings.csv.gz"
-)
+LISTINGS_URL_BY_CITY = {
+    "Lisbon": "https://data.insideairbnb.com/portugal/lisbon/lisbon/2026-09-19/data/listings.csv.gz",
+    "Porto": "https://data.insideairbnb.com/portugal/norte/porto/2026-09-19/data/listings.csv.gz",
+}
+LISBON_LISTINGS_URL = LISTINGS_URL_BY_CITY["Lisbon"]
 SOURCE_PAGE = "https://insideairbnb.com/pt/get-the-data/"
+
+
+def city_for_area(area: str | None) -> str:
+    """Return the supported Inside Airbnb city for a saved property area."""
+    return "Porto" if "porto" in str(area or "").casefold() or "oporto" in str(area or "").casefold() else "Lisbon"
+
+
+def area_with_city(neighborhood: str, city: str) -> str:
+    """Persist the selected supported city alongside its neighborhood label."""
+    if city not in LISTINGS_URL_BY_CITY:
+        raise ValueError("StayWise currently supports properties in Lisbon and Porto.")
+    import re
+    cleaned = re.sub(r"[,\s]*(?:Lisbon|Lisboa|Porto|Oporto)(?:,\s*Portugal)?\s*$", "", neighborhood.strip(), flags=re.IGNORECASE).strip(" ,")
+    return f"{cleaned}, {city}" if cleaned else city
 
 
 def distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
