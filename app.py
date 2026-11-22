@@ -350,6 +350,13 @@ settings, properties = get_workspace_bootstrap()
 if "pending_property_id" in st.session_state:
     st.session_state["selected_property_id"] = st.session_state.pop("pending_property_id")
 if not properties:
+    if auth_user:
+        _, logout_column = st.columns([8, 1])
+        with logout_column:
+            if st.button("Sign out", icon=":material/logout:", use_container_width=True, key="first_rental_sign_out"):
+                sign_out()
+                st.session_state.pop("selected_property_id", None)
+                st.rerun()
     st.markdown('<div class="brand">StayWise<span>.</span></div>', unsafe_allow_html=True)
     st.markdown('<div class="eyebrow">Portfolio setup</div>', unsafe_allow_html=True)
     st.title("Add your first rental")
