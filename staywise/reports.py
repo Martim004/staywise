@@ -259,8 +259,8 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
         row_number = channels_ws.max_row + 1
         channels_ws.append([
             channel,
-            f'=COUNTIFS(Reservations!$L$2:$L$${reservation_last_row},A{row_number},Reservations!$K$2:$K$${reservation_last_row},"confirmed",Reservations!$G$2:$G$${reservation_last_row},">0")+COUNTIFS(Reservations!$L$2:$L$${reservation_last_row},A{row_number},Reservations!$K$2:$K$${reservation_last_row},"completed",Reservations!$G$2:$G$${reservation_last_row},">0")',
-            f'=SUMIFS(Reservations!$J$2:$J$${reservation_last_row},Reservations!$L$2:$L$${reservation_last_row},A{row_number})',
+            f'=COUNTIFS(Reservations!$L$2:$L${reservation_last_row},A{row_number},Reservations!$K$2:$K${reservation_last_row},"confirmed",Reservations!$G$2:$G${reservation_last_row},">0")+COUNTIFS(Reservations!$L$2:$L${reservation_last_row},A{row_number},Reservations!$K$2:$K${reservation_last_row},"completed",Reservations!$G$2:$G${reservation_last_row},">0")',
+            f'=SUMIFS(Reservations!$J$2:$J${reservation_last_row},Reservations!$L$2:$L${reservation_last_row},A{row_number})',
         ])
     channel_table = Table(displayName="ChannelSummaryTable", ref=f"A1:C{channels_ws.max_row}")
     channel_table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium4", showRowStripes=True)
