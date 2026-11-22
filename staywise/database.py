@@ -175,7 +175,8 @@ def init_db() -> None:
             name TEXT NOT NULL, area TEXT NOT NULL DEFAULT '', bedrooms INTEGER NOT NULL DEFAULT 2,
             capacity INTEGER NOT NULL DEFAULT 4, latitude REAL NOT NULL DEFAULT 38.719,
             longitude REAL NOT NULL DEFAULT -9.165, airbnb_url TEXT NOT NULL DEFAULT '',
-            booking_url TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            booking_url TEXT NOT NULL DEFAULT '', sample_data_enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS reservations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -215,6 +216,8 @@ def init_db() -> None:
             conn.execute("ALTER TABLE properties ADD COLUMN checkin_time TEXT")
         if "checkout_time" not in property_columns:
             conn.execute("ALTER TABLE properties ADD COLUMN checkout_time TEXT")
+        if "sample_data_enabled" not in property_columns:
+            conn.execute("ALTER TABLE properties ADD COLUMN sample_data_enabled INTEGER NOT NULL DEFAULT 1")
         reservation_columns = {row["name"] for row in conn.execute("PRAGMA table_info(reservations)")}
         if "property_id" not in reservation_columns:
             conn.execute("ALTER TABLE reservations ADD COLUMN property_id INTEGER REFERENCES properties(id)")
@@ -350,6 +353,7 @@ def _validate_property(item: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(f"{key.capitalize()} must be between {low} and {high}.")
     result["airbnb_url"] = _safe_url(item.get("airbnb_url", ""), "Airbnb")
     result["booking_url"] = _safe_url(item.get("booking_url", ""), "Booking")
+    result["sample_data_enabled"] = bool(item.get("sample_data_enabled", True))
     return result
 
 
@@ -357,14 +361,15 @@ def add_property(item: dict[str, Any]) -> int:
     item = _validate_property(item)
     if _cloud_user():
         return int(_pg_write("""INSERT INTO public.staywise_properties
-            (name,area,bedrooms,capacity,latitude,longitude,airbnb_url,booking_url)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+            (name,area,bedrooms,capacity,latitude,longitude,airbnb_url,booking_url,sample_data_enabled)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
             (item["name"],item.get("area", ""),item["bedrooms"],item["capacity"],item["latitude"],
-             item["longitude"],item.get("airbnb_url", ""),item.get("booking_url", "")), returning=True))
+             item["longitude"],item.get("airbnb_url", ""),item.get("booking_url", ""),
+             item["sample_data_enabled"]), returning=True))
     with connect() as conn:
         cur = conn.execute("""INSERT INTO properties
-            (name,area,bedrooms,capacity,latitude,longitude,airbnb_url,booking_url)
-            VALUES (:name,:area,:bedrooms,:capacity,:latitude,:longitude,:airbnb_url,:booking_url)""", item)
+            (name,area,bedrooms,capacity,latitude,longitude,airbnb_url,booking_url,sample_data_enabled)
+            VALUES (:name,:area,:bedrooms,:capacity,:latitude,:longitude,:airbnb_url,:booking_url,:sample_data_enabled)""", item)
         return int(cur.lastrowid)
 
 
