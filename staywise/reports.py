@@ -167,7 +167,7 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
     cards = [
         ("A5:D5", "A6:D7", "Gross revenue", "=SUM('Monthly Summary'!F2:F13)", "€#,##0.00;[Red]-€#,##0.00"),
         ("E5:H5", "E6:H7", "Booked nights", "=SUM('Monthly Summary'!E2:E13)", "#,##0"),
-        ("I5:L5", "I6:L7", "Active stays", '=COUNTIFS(ReservationsTable[Status],"confirmed",ReservationsTable[Nights in period],">0")+COUNTIFS(ReservationsTable[Status],"completed",ReservationsTable[Nights in period],">0")', "#,##0"),
+        ("I5:L5", "I6:L7", "Active stays", '=COUNTIFS(Reservations!$K$2:$K$5001,"confirmed",Reservations!$G$2:$G$5001,">0")+COUNTIFS(Reservations!$K$2:$K$5001,"completed",Reservations!$G$2:$G$5001,">0")', "#,##0"),
         ("M5:P5", "M6:P7", "Average revenue per booked night", '=IF(E6=0,0,A6/E6)', "€#,##0.00;[Red]-€#,##0.00"),
     ]
     for label_range, value_range, label, formula, number_format in cards:
@@ -213,6 +213,8 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
     reservation_table = Table(displayName="ReservationsTable", ref=f"A1:M{detail.max_row}")
     reservation_table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True, showColumnStripes=False)
     detail.add_table(reservation_table)
+    # Keep ordinary cell references compatible across Excel, locale, and spreadsheet clients.
+    reservation_last_row = max(5001, detail.max_row + 1000)
 
     # One row per calendar night makes zero-revenue dates visible and keeps monthly totals live.
     ledger.append(["Night", "Weekday", "Gross revenue (€)", "Status"])
@@ -223,8 +225,8 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
         ledger.append([
             night,
             night.strftime("%A"),
-            f'=SUMIFS(ReservationsTable[Nightly rate (€)],ReservationsTable[Check-in],"<="&A{row_number},ReservationsTable[Check-out],">"&A{row_number},ReservationsTable[Status],"confirmed")+SUMIFS(ReservationsTable[Nightly rate (€)],ReservationsTable[Check-in],"<="&A{row_number},ReservationsTable[Check-out],">"&A{row_number},ReservationsTable[Status],"completed")',
-            f'=IF(OR(COUNTIFS(ReservationsTable[Check-in],"<="&A{row_number},ReservationsTable[Check-out],">"&A{row_number},ReservationsTable[Status],"confirmed")>0,COUNTIFS(ReservationsTable[Check-in],"<="&A{row_number},ReservationsTable[Check-out],">"&A{row_number},ReservationsTable[Status],"completed")>0),"Booked",IF(COUNTIFS(ReservationsTable[Check-in],"<="&A{row_number},ReservationsTable[Check-out],">"&A{row_number},ReservationsTable[Status],"cancelled")>0,"Cancelled" ,"Not booked"))',
+            f'=SUMIFS(Reservations!$I$2:$I\${reservation_last_row},Reservations!$E$2:$E\${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F\${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K\${reservation_last_row},"confirmed")+SUMIFS(Reservations!$I$2:$I\${reservation_last_row},Reservations!$E$2:$E\${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F\${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K\${reservation_last_row},"completed")',
+            f'=IF(OR(COUNTIFS(Reservations!$E$2:$E\${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F\${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K\${reservation_last_row},"confirmed")>0,COUNTIFS(Reservations!$E$2:$E\${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F\${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K\${reservation_last_row},"completed")>0),"Booked",IF(COUNTIFS(Reservations!$E$2:$E\${reservation_last_row},"<="&A{row_number},Reservations!$F$2:$F\${reservation_last_row},">"&A{row_number},Reservations!$K$2:$K\${reservation_last_row},"cancelled")>0,"Cancelled","Not booked"))',
         ])
     ledger_table = Table(displayName="DailyLedgerTable", ref=f"A1:D{ledger.max_row}")
     ledger_table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium4", showRowStripes=True)
@@ -239,8 +241,8 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
         period_nights = max(0, (min(next_month, end_exclusive) - month_start).days)
         monthly_ws.append([
             month_start.strftime("%B"), month_start, next_month, period_nights,
-            f'=COUNTIFS(DailyLedgerTable[Night],">="&B{row_number},DailyLedgerTable[Night],"<"&C{row_number},DailyLedgerTable[Status],"Booked")',
-            f'=SUMIFS(DailyLedgerTable[Gross revenue (€)],DailyLedgerTable[Night],">="&B{row_number},DailyLedgerTable[Night],"<"&C{row_number})',
+            f'=COUNTIFS(\'Daily Ledger\'!$A$2:$A\${ledger.max_row},">="&B{row_number},\'Daily Ledger\'!$A$2:$A\${ledger.max_row},"<"&C{row_number},\'Daily Ledger\'!$D$2:$D\${ledger.max_row},"Booked")',
+            f'=SUMIFS(\'Daily Ledger\'!$C$2:$C\${ledger.max_row},\'Daily Ledger\'!$A$2:$A\${ledger.max_row},">="&B{row_number},\'Daily Ledger\'!$A$2:$A\${ledger.max_row},"<"&C{row_number})',
             f'=IF(E{row_number}=0,0,F{row_number}/E{row_number})',
             f'=IF(D{row_number}=0,0,E{row_number}/D{row_number})',
         ])
@@ -257,8 +259,8 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
         row_number = channels_ws.max_row + 1
         channels_ws.append([
             channel,
-            f'=COUNTIFS(ReservationsTable[Source],A{row_number},ReservationsTable[Status],"confirmed",ReservationsTable[Nights in period],">0")+COUNTIFS(ReservationsTable[Source],A{row_number},ReservationsTable[Status],"completed",ReservationsTable[Nights in period],">0")',
-            f'=SUMIFS(ReservationsTable[Revenue in period (€)],ReservationsTable[Source],A{row_number})',
+            f'=COUNTIFS(Reservations!$L$2:$L$\${reservation_last_row},A{row_number},Reservations!$K$2:$K$\${reservation_last_row},"confirmed",Reservations!$G$2:$G$\${reservation_last_row},">0")+COUNTIFS(Reservations!$L$2:$L$\${reservation_last_row},A{row_number},Reservations!$K$2:$K$\${reservation_last_row},"completed",Reservations!$G$2:$G$\${reservation_last_row},">0")',
+            f'=SUMIFS(Reservations!$J$2:$J$\${reservation_last_row},Reservations!$L$2:$L$\${reservation_last_row},A{row_number})',
         ])
     channel_table = Table(displayName="ChannelSummaryTable", ref=f"A1:C{channels_ws.max_row}")
     channel_table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium4", showRowStripes=True)
