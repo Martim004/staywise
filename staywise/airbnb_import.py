@@ -187,6 +187,8 @@ def parse_airbnb_earnings_export(data: bytes, file_name: str = "") -> tuple[dict
         currency = str(raw.get("currency") or "").strip().upper()
         if currency:
             currencies.add(currency)
+        if currency != "EUR":
+            errors.append(f"Row {index}: Currency must be EUR because StayWise stores revenue in EUR and does not convert currencies.")
         gross = _number(raw.get("gross earnings"), "Gross earnings", index, errors)
         if gross is None:
             gross = _number(raw.get("amount"), "Amount", index, errors)
