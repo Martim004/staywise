@@ -386,6 +386,40 @@ if not properties:
                 st.rerun()
     st.stop()
 
+def render_fictional_market_map(property_id: int, property_name: str, latitude: float,
+                               longitude: float, radius_km: float, comps: list[dict]) -> None:
+    """Show sample competitors while the live city snapshot is unloaded or unavailable."""
+    demo_map = folium.Map(location=[latitude, longitude], zoom_start=14, tiles="OpenStreetMap",
+                          control_scale=True, scrollWheelZoom=True, prefer_canvas=True)
+    folium.Circle(location=[latitude, longitude], radius=radius_km * 1000,
+                  color="#16877E", weight=2, fill=True, fill_color="#16877E",
+                  fill_opacity=0.05).add_to(demo_map)
+    folium.Marker([latitude, longitude], tooltip=property_name,
+                  popup=folium.Popup(f"<strong>{escape(property_name)}</strong><br>Your rental", max_width=240),
+                  icon=folium.Icon(color="darkgreen", icon="home", prefix="fa")).add_to(demo_map)
+    for comp in comps:
+        comp_lat, comp_lon = comp.get("latitude"), comp.get("longitude")
+        if comp_lat is None or comp_lon is None or float(comp.get("distance_km", 0)) > radius_km:
+            continue
+        name = escape(str(comp.get("name", "Fictional comparison")))
+        note = escape(str(comp.get("notes", "")))
+        popup = (f"<div style='font-family:Arial,sans-serif'><strong>{name}</strong>"
+                 f"<br>€{float(comp['nightly_rate']):,.0f} / night · {float(comp['distance_km']):.1f} km"
+                 f"<br>{note}<br><em>Fictional demo listing</em></div>")
+        folium.Marker(
+            [float(comp_lat), float(comp_lon)],
+            tooltip=folium.Tooltip(name, sticky=True),
+            popup=folium.Popup(popup, max_width=300),
+            icon=folium.DivIcon(
+                html="<div style='width:13px;height:13px;border:2px solid white;border-radius:50%;background:#526676;box-shadow:0 1px 5px #17324d66'></div>",
+                icon_size=(17, 17), icon_anchor=(8, 8), class_name="",
+            ),
+        ).add_to(demo_map)
+    folium.LayerControl(collapsed=True, position="topright").add_to(demo_map)
+    st_folium(demo_map, height=500, width=None, use_container_width=True,
+              returned_objects=[], key=f"fictional_demo_map_{property_id}")
+
+
 def escape_markdown(value: str) -> str:
     return "".join("\\" + char if char in r"\`*_{}[]<>()#+-.!|:" else char for char in value)
 
@@ -467,6 +501,43 @@ def revenue_chart_svg(values: dict[date, float], description: str) -> str:
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_postgres_snapshot(city: str) -> tuple[pd.DataFrame, dict] | None:
     return load_latest_snapshot(city)
+
+@st.cache_data(ttl=86400, max_entries=2, show_spinner=False)
+def load_inside_airbnb(city: str) -> pd.DataFrame:
+    return pd.read_csv(LISTINGS_URL_BY_CITY[city], compression="gzip", low_memory=False)
+
+
+@st.cache_data(ttl=900, max_entries=2, show_spinner=False)
+def load_market_snapshot(city: str, force_refresh: bool = False) -> tuple[pd.DataFrame, dict | None, str | None]:
+    configured_urls = database_urls()
+    storage_error = None
+    if not force_refresh and any(configured_urls.values()):
+        try:
+            saved = load_postgres_snapshot(city)
+            if saved:
+                return saved[0], saved[1], None
+        except Exception as exc:
+            storage_error = f"PostgreSQL snapshot unavailable ({type(exc).__name__})"
+    source_data = load_inside_airbnb(city)
+    storage_info = None
+    if any(configured_urls.values()):
+        try:
+            storage_info = save_latest_snapshot(source_data, LISTINGS_URL_BY_CITY[city], city)
+            load_postgres_snapshot.clear()
+        except Exception as exc:
+            storage_error = f"Snapshot loaded, but could not be saved ({type(exc).__name__})"
+    return source_data, storage_info, storage_error
+
+
+@st.cache_data(ttl=900, max_entries=12, show_spinner=False)
+def load_nearby_airbnb(city: str, latitude: float, longitude: float, radius_km: float,
+                       bedrooms: int | None, capacity: int | None,
+                       force_refresh: bool = False) -> tuple[pd.DataFrame, dict | None, str | None]:
+    source_data, storage_info, storage_error = load_market_snapshot(city, force_refresh)
+    nearby = listings_within_radius(source_data, latitude, longitude, radius_km, bedrooms, capacity)
+    return nearby, storage_info, storage_error
+
+
 
 BLOCK_DATES_QUESTION = "How do I block dates?"
 
@@ -1174,45 +1245,26 @@ elif page == "Market":
     bedrooms_only = st.checkbox("Match bedroom count", value=True)
     capacity_match = st.checkbox("Include listings that accommodate my guest capacity", value=False)
     airbnb_adjustment = st.slider("Suggested rate adjustment from local Airbnb median", -30, 30, 0, 1, format="%d%%", key="airbnb_adjust")
-    @st.cache_data(ttl=86400, show_spinner=False)
-    def load_inside_airbnb(url: str) -> pd.DataFrame:
-        return pd.read_csv(url, compression="gzip", low_memory=False)
+    market_city = city_for_area(active_property.get("area", ""))
+    market_query_key = f"{active_property_id}:{market_city}"
     load_requested = st.button("Load / refresh Airbnb comparables", type="primary")
     if load_requested:
-        st.session_state["inside_airbnb_loaded"] = True
+        st.session_state["inside_airbnb_loaded_for"] = market_query_key
         st.session_state["inside_airbnb_refresh_requested"] = True
         load_inside_airbnb.clear()
+        load_market_snapshot.clear()
+        load_nearby_airbnb.clear()
         load_postgres_snapshot.clear()
-    if st.session_state.get("inside_airbnb_loaded"):
-        market_city = city_for_area(active_property.get("area", ""))
+    market_map_rendered = False
+    if st.session_state.get("inside_airbnb_loaded_for") == market_query_key:
         market_source_url = LISTINGS_URL_BY_CITY[market_city]
         with st.spinner(f"Loading the latest {market_city} snapshot from Inside Airbnb…"):
             try:
-                storage_info = None
-                storage_error = None
-                configured_urls = database_urls()
-                refresh_requested = st.session_state.pop("inside_airbnb_refresh_requested", False)
-                saved = None
-                if not refresh_requested and any(configured_urls.values()):
-                    try:
-                        saved = load_postgres_snapshot(market_city)
-                    except Exception as exc:
-                        storage_error = str(exc)
-                if saved:
-                    source_data, storage_info = saved
-                else:
-                    source_data = load_inside_airbnb(market_source_url)
-                    if any(configured_urls.values()):
-                        try:
-                            storage_info = save_latest_snapshot(source_data, market_source_url, market_city)
-                            load_postgres_snapshot.clear()
-                        except Exception as exc:
-                            storage_error = str(exc)
-                st.session_state["inside_airbnb_snapshot"] = source_data
-                nearby = listings_within_radius(
-                    source_data, float(settings.get("latitude",38.719)), float(settings.get("longitude",-9.165)),
+                force_refresh = st.session_state.pop("inside_airbnb_refresh_requested", False)
+                nearby, storage_info, storage_error = load_nearby_airbnb(
+                    market_city, float(settings.get("latitude",38.719)), float(settings.get("longitude",-9.165)),
                     radius_km, int(settings.get("bedrooms",2)) if bedrooms_only else None,
-                    int(settings.get("capacity",4)) if capacity_match else None,
+                    int(settings.get("capacity",4)) if capacity_match else None, force_refresh,
                 )
                 st.caption(f"Source snapshot: September 2026 · {len(nearby):,} matches · distances are straight-line from your saved coordinates. Prices and availability are source data, not live quotes.")
                 if storage_info:
@@ -1234,7 +1286,7 @@ elif page == "Market":
                     m5.metric("Suggested nightly rate", money(suggested), help="Filtered Airbnb median adjusted by your chosen percentage")
                     st.caption("Rate guide: the nearby median is a simple benchmark. It does not account for date-specific demand, quality, fees, or Booking.com inventory.")
                     st.subheader("Nearby competition map")
-                    st.caption(f"{len(nearby):,} matching Airbnb listings · {radius_km:.1f} km radius. Listings group together when zoomed out; zoom in to separate individual homes.")
+                    st.caption(f"{len(nearby):,} matching Airbnb listings within {radius_km:.1f} km. The map shows up to 600 closest pins; the table and CSV cover the full result.")
                     home_lat, home_lon = float(settings["latitude"]), float(settings["longitude"])
                     competition_map = folium.Map(location=[home_lat, home_lon], zoom_start=14, tiles="OpenStreetMap",
                         control_scale=True, scrollWheelZoom=True, prefer_canvas=True)
@@ -1252,7 +1304,8 @@ elif page == "Market":
                     }"""
                     airbnb_group = MarkerCluster(name="Airbnb listings", options={"maxClusterRadius":44,"spiderfyOnMaxZoom":True,
                         "showCoverageOnHover":False,"zoomToBoundsOnClick":True}, icon_create_function=cluster_icon).add_to(competition_map)
-                    for _, listing in nearby.iterrows():
+                    map_listings = nearby.nsmallest(600, "distance_km")
+                    for _, listing in map_listings.iterrows():
                         name = escape(str(listing.get("name") or "Airbnb listing"))
                         listing_id = str(listing.get("id", "")).split(".")[0]
                         airbnb_url = f"https://www.airbnb.com/rooms/{listing_id}" if listing_id.isdigit() else "https://www.airbnb.com/"
@@ -1293,11 +1346,13 @@ elif page == "Market":
                     folium.LayerControl(collapsed=True,position="topright").add_to(competition_map)
                     st.markdown("<span style='color:#16877E'>● Your property and radius</span>　<span style='color:#E79447'>● Airbnb listings</span>　<span style='color:#526676'>● Manually added listings</span>", unsafe_allow_html=True)
                     st.caption("Hover over an individual pin to see its name. Click the pin, then choose **Open Airbnb listing** in its card to visit that home.")
-                    st_folium(competition_map, height=560, width=None, use_container_width=True, returned_objects=[], key="competition_folium_map")
+                    st_folium(competition_map, height=560, width=None, use_container_width=True, returned_objects=[], key=f"competition_folium_map_{active_property_id}")
+                    market_map_rendered = True
                     price_frame = nearby["price"].dropna().clip(upper=nearby["price"].quantile(.95))
                     st.bar_chart(price_frame.value_counts(bins=12, sort=False).sort_index(), height=190, color="#1D7A78")
                     visible = [c for c in ["name","neighbourhood_cleansed","room_type","bedrooms","accommodates","price","review_scores_rating","number_of_reviews","availability_365","distance_km","listing_url"] if c in nearby]
-                    st.dataframe(nearby[visible].rename(columns={"name":"Listing","neighbourhood_cleansed":"Neighborhood","room_type":"Room type","bedrooms":"Beds","accommodates":"Guests","price":"Nightly price (€)","review_scores_rating":"Rating","number_of_reviews":"Reviews","availability_365":"Available days / 365","distance_km":"Distance (km)","listing_url":"Listing URL"}).round(2), width="stretch", hide_index=True)
+                    st.caption(f"Showing the {min(500, len(nearby)):,} closest listings below; download the CSV for all {len(nearby):,} results.")
+                    st.dataframe(nearby[visible].head(500).rename(columns={"name":"Listing","neighbourhood_cleansed":"Neighborhood","room_type":"Room type","bedrooms":"Beds","accommodates":"Guests","price":"Nightly price (€)","review_scores_rating":"Rating","number_of_reviews":"Reviews","availability_365":"Available days / 365","distance_km":"Distance (km)","listing_url":"Listing URL"}).round(2), width="stretch", hide_index=True)
                     st.download_button("Download filtered Airbnb comparables CSV", nearby[visible].to_csv(index=False).encode("utf-8"), "staywise-lisbon-airbnb-comparables.csv", "text/csv")
                 else:
                     st.info("No Airbnb listings matched this radius and property filter. Try a wider radius or turn off a size filter.")
@@ -1305,41 +1360,16 @@ elif page == "Market":
                 st.error(f"Could not load the Inside Airbnb snapshot for this city: {exc}")
                 st.caption("Check the source page for current data files or try again later.")
     else:
-        st.caption("Load the public listing snapshot when you want to refresh your comparison. The download is cached for 24 hours.")
-        if comps:
-            st.subheader("Fictional neighborhood preview")
-            st.caption("Sample competitor pins and rates are generated for demonstration. Load the Inside Airbnb snapshot above for current public listings.")
-            home_lat, home_lon = float(settings["latitude"]), float(settings["longitude"])
-            demo_map = folium.Map(location=[home_lat, home_lon], zoom_start=14, tiles="OpenStreetMap",
-                                  control_scale=True, scrollWheelZoom=True, prefer_canvas=True)
-            folium.Circle(location=[home_lat, home_lon], radius=radius_km * 1000,
-                          color="#16877E", weight=2, fill=True, fill_color="#16877E",
-                          fill_opacity=0.05).add_to(demo_map)
-            folium.Marker([home_lat, home_lon], tooltip="Your property",
-                          icon=folium.Icon(color="darkgreen", icon="home", prefix="fa")).add_to(demo_map)
-            for comp_index, comp in enumerate(comps):
-                comp_lat, comp_lon = comp.get("latitude"), comp.get("longitude")
-                if comp_lat is None or comp_lon is None:
-                    continue
-                if float(comp.get("distance_km", 0)) > radius_km:
-                    continue
-                name = escape(str(comp.get("name", "Fictional comparison")))
-                note = escape(str(comp.get("notes", "")))
-                popup = (f"<div style='font-family:Arial,sans-serif'><strong>{name}</strong>"
-                         f"<br>€{float(comp['nightly_rate']):,.0f} / night · {float(comp['distance_km']):.1f} km"
-                         f"<br><span>{note}</span><br><em>Fictional demo listing</em></div>")
-                folium.Marker(
-                    [float(comp_lat), float(comp_lon)],
-                    tooltip=folium.Tooltip(name, sticky=True),
-                    popup=folium.Popup(popup, max_width=300),
-                    icon=folium.DivIcon(
-                        html="<div style='width:13px;height:13px;border:2px solid white;border-radius:50%;background:#526676;box-shadow:0 1px 5px #17324d66'></div>",
-                        icon_size=(17, 17), icon_anchor=(8, 8), class_name="",
-                    ),
-                ).add_to(demo_map)
-            folium.LayerControl(collapsed=True, position="topright").add_to(demo_map)
-            st_folium(demo_map, height=500, width=None, use_container_width=True,
-                      returned_objects=[], key=f"fictional_demo_map_{active_property_id}")
+        st.caption("Load the public listing snapshot when you want to refresh your comparison. The demo map is available immediately.")
+
+    if not market_map_rendered:
+        st.subheader("Nearby competition map")
+        st.caption("Fictional comparison pins appear immediately. Load the Inside Airbnb snapshot above for current public listings.")
+        render_fictional_market_map(
+            int(active_property_id), str(active_property["name"]),
+            float(settings.get("latitude", 38.719)), float(settings.get("longitude", -9.165)),
+            float(radius_km), comps,
+        )
     market_city_label = city_for_area(active_property.get("area", ""))
     st.markdown(f"Data: [Inside Airbnb {market_city_label} listings]({SOURCE_PAGE}). This public dataset contains Airbnb listings only; Booking.com prices are not supplied.")
     st.subheader("Add a comparable listing")
