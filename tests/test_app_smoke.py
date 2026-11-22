@@ -15,12 +15,14 @@ class AppSmokeTests(unittest.TestCase):
             app = AppTest.from_file("../app.py").run(timeout=30)
             self.assertEqual(len(app.exception), 0)
             for page in ["Bookings", "Calendar", "Market"]:
-                app.session_state["workspace_page"] = page\n                app.run(timeout=30)
+                app.session_state["workspace_page"] = page
+                app.run(timeout=30)
                 self.assertEqual(len(app.exception), 0, f"{page} page raised: {[e.message for e in app.exception]}")
                 if page in {"Bookings", "Market"}:
                     self.assertTrue(all(button.disabled for button in app.button if button.label in {
                         "Save booking", "Block dates", "Remove", "Delete selected booking",
                         "Save property settings", "Add comparison", "Delete"
                     }))
-            app.session_state["workspace_page"] = "Bookings"\n            app.run(timeout=30)
+            app.session_state["workspace_page"] = "Bookings"
+            app.run(timeout=30)
             self.assertEqual(len(app.get("file_uploader")), 0, "Public demo must not accept booking CSV uploads")
