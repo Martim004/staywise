@@ -250,9 +250,9 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
 
     # The channel chart uses live formulas tied to the editable Reservations table.
     channels_ws.append(["Booking source", "Active stays", "Gross revenue (€)"])
-    channel_names = sorted({str(r.get("source") or "Other").strip() or "Other" for r, _ in stays}, key=str.casefold)
-    if not channel_names:
-        channel_names = ["No bookings"]
+    standard_channels = ["Airbnb", "Booking.com", "Direct", "Other"]
+    observed_channels = {str(r.get("source") or "Other").strip() or "Other" for r, _ in stays}
+    channel_names = standard_channels + sorted(observed_channels - set(standard_channels), key=str.casefold)
     for channel in channel_names:
         row_number = channels_ws.max_row + 1
         channels_ws.append([
