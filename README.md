@@ -10,7 +10,7 @@ StayWise helps a short-term rental owner manage multiple homes and their stays, 
 - Team members and student numbers: **Add all names and student numbers before course submission.**
 - Repository: https://github.com/Martim004/staywise
 
-The deployed app requires Google sign-in. Each account starts with an empty private portfolio. When a user adds a rental, StayWise creates fictional bookings with seasonal rates and varied stays, a non-overlapping owner block, and nearby comparison pins; older empty homes are backfilled on sign-in. Each user's portfolio is isolated by Supabase RLS. The city selector follows the Portuguese city snapshots currently listed by Inside Airbnb (Lisbon and Porto). Neighborhood options are loaded from the matching city’s official Inside Airbnb `neighbourhoods.csv` file. Never commit real guest details or a local database file.
+The deployed app requires Google sign-in. Each account starts with a private portfolio. Manually added rentals receive clearly fictional sample bookings, a blocked date range, and market comparison pins. Airbnb earnings imports add the uploaded reservation records without generating sample stays. Each user's portfolio is isolated by Supabase RLS. The city selector follows the Portuguese city snapshots currently listed by Inside Airbnb (Lisbon and Porto). Neighborhood options are loaded from the matching city’s official Inside Airbnb `neighbourhoods.csv` file. Never commit real guest details or a local database file.
 
 ## Run locally
 
@@ -29,7 +29,7 @@ The local app stores data in `data/staywise.sqlite3`. That directory is excluded
 
 - The deployed app fails closed unless Google sign-in is configured. Any verified Google account can create its own isolated portfolio; no rental data is loaded before sign-in. Local SQLite development requires the explicit `STAYWISE_LOCAL_MODE=1` opt-in.
 - PostgreSQL uses authenticated roles and row-level security scoped to the verified Google subject; child records must reference a property owned by the same user.
-- Application and database checks bound dates, rates, counts, text lengths, URLs, and CSV upload size/row count.
+- Application and database checks bound dates, rates, counts, text lengths, URLs, and CSV/XLSX upload size and row count.
 - CSV and Excel exports escape formula-like text; PDF output escapes user-provided markup.
 - `requirements.in` lists the minimal direct packages; `requirements.txt` pins the full dependency tree with SHA-256 hashes. Regenerate it with `uv pip compile requirements.in --python-version 3.11 --generate-hashes -o requirements.txt`.
 - GitHub Actions runs `pip-audit` on pushes, pull requests, and weekly; Dependabot proposes dependency and workflow updates.
@@ -43,7 +43,7 @@ python -m unittest discover -s tests
 
 ## Main features
 
-- Reservation records with guest details, stay dates, source, and status; CSV import and export.
+- Reservation records with guest details, stay dates, source, and status; CSV export and Airbnb earnings report import (XLSX or CSV).
 - A multi-property portfolio with property-specific reservations, blocked dates, comparables, map coordinates, and Airbnb / Booking.com listing links.
 - Google sign-in and an account page; signed-in portfolios are stored in Supabase Postgres and separated with PostgreSQL Row Level Security (RLS).
 - Add or remove rentals from the portfolio; removing a rental also removes its linked reservations, guest contacts, blocked dates, and comparisons. Every rental can be deleted after confirmation.
@@ -51,7 +51,7 @@ python -m unittest discover -s tests
 - Lisbon and Porto Airbnb market comparisons from the public Inside Airbnb snapshots, with a configurable radius, bedroom and capacity filters, price distribution, ratings, reviews, availability, and listing-level details.
 - An OpenStreetMap street view centered on the selected home, with clustered competitors, hover names, and listing popups that link to Airbnb pages.
 - Manual comparable records for Booking.com or other sources, since Inside Airbnb publishes Airbnb data only.
-- Revenue views for a chosen night, a chosen month, and current-year-to-date. Revenue is actual booked gross nightly revenue, not a projection.
+- Revenue views for a chosen night, a chosen month, or a selected year. Revenue is actual booked gross earnings, not a projection.
 - Revenue Excel workbook with a KPI dashboard and chart, monthly summary, daily ledger, and reservation detail.
 - Fictional demo bookings, blocked dates, comparison map pins, calendar entries, and revenue records generated whenever a user adds a property.
 - PostgreSQL snapshot storage for the current Inside Airbnb Lisbon and Porto detailed listings files. The latest snapshot for each city is retained separately; the CSV's original columns are kept in JSONB.
@@ -112,6 +112,8 @@ The app is deployed from this public GitHub repository on [Streamlit Community C
 
 ```text
 app.py                   Streamlit screens and user workflows
+staywise/airbnb_import.py Parse and validate Airbnb earnings reports
+staywise/airbnb_export_template.py Blank Airbnb export format for download
 staywise/auth.py         Verified Google OpenID Connect identity
 staywise/calculations.py Reservation validation and manual market summary
 staywise/database.py     SQLite demo/local storage and Supabase user data
