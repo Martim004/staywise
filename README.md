@@ -10,7 +10,7 @@ StayWise helps a short-term rental owner manage multiple homes and their stays, 
 - Team members and student numbers: **Add all names and student numbers before course submission.**
 - Repository: https://github.com/Martim004/staywise
 
-The deployed app requires Google sign-in. Every Google account that completes the sign-in flow receives a private portfolio containing a fictional **Casa T2 do Campo de Ourique** example with sample bookings, a blocked owner stay, and fictional comparables. Each user's portfolio is isolated by Supabase RLS. Added Lisbon and Porto rentals also receive fictional demo bookings, a blocked period, and map-ready comparisons. Never commit real guest details or a local database file.
+The deployed app requires Google sign-in. Each account starts with an empty private portfolio. When a user adds a rental, StayWise creates clearly fictional bookings, a blocked period, and map-ready fictional comparisons. Each user's portfolio is isolated by Supabase RLS. The city selector follows the Portuguese city snapshots currently listed by Inside Airbnb (Lisbon and Porto). Never commit real guest details or a local database file.
 
 ## Run locally
 
@@ -46,14 +46,14 @@ python -m unittest discover -s tests
 - Reservation records with guest details, stay dates, source, and status; CSV import and export.
 - A multi-property portfolio with property-specific reservations, blocked dates, comparables, map coordinates, and Airbnb / Booking.com listing links.
 - Google sign-in and an account page; signed-in portfolios are stored in Supabase Postgres and separated with PostgreSQL Row Level Security (RLS).
-- Add or remove rentals from the portfolio; removing a rental also removes its linked reservations, guest contacts, blocked dates, and comparisons. The built-in fictional demo home is protected from deletion.
+- Add or remove rentals from the portfolio; removing a rental also removes its linked reservations, guest contacts, blocked dates, and comparisons. Every rental can be deleted after confirmation.
 - Color-coded month calendar showing booked, blocked, and available nights.
 - Lisbon and Porto Airbnb market comparisons from the public Inside Airbnb snapshots, with a configurable radius, bedroom and capacity filters, price distribution, ratings, reviews, availability, and listing-level details.
 - An OpenStreetMap street view centered on the selected home, with clustered competitors, hover names, and listing popups that link to Airbnb pages.
 - Manual comparable records for Booking.com or other sources, since Inside Airbnb publishes Airbnb data only.
 - Revenue views for a chosen night, a chosen month, and current-year-to-date. Revenue is actual booked gross nightly revenue, not a projection.
 - Revenue Excel workbook with a KPI dashboard and chart, monthly summary, daily ledger, and reservation detail.
-- Fictional Campo de Ourique example and generated sample data for every signed-in account. Added homes in Lisbon and Porto get their own demo bookings, blocked dates, comparison map pins, calendar entries, and revenue records.
+- Fictional demo bookings, blocked dates, comparison map pins, calendar entries, and revenue records generated whenever a user adds a property.
 - PostgreSQL snapshot storage for the current Inside Airbnb Lisbon and Porto detailed listings files. The latest snapshot for each city is retained separately; the CSV's original columns are kept in JSONB.
 
 The Inside Airbnb public snapshot is downloaded on request and cached for 24 hours. Prices are observations from that snapshot, not live booking quotes. Comparisons use straight-line distance and should be interpreted as market context, not an exact price prediction. Airbnb and Booking.com links open the owner's listing page; StayWise does not currently connect accounts or sync reservations directly. Airbnb API-connected software access and Booking.com connectivity require approved partner / property connections. Source: [Inside Airbnb data](https://insideairbnb.com/pt/get-the-data/).
