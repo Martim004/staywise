@@ -1451,14 +1451,29 @@ elif page == "Revenue":
     st.title("Revenue")
     st.markdown('<p class="subtle">A clear view of recorded stay income, with cancelled bookings and future nights left out.</p>', unsafe_allow_html=True)
 
-    control_left, control_right = st.columns([1.25, 1], vertical_alignment="bottom")
-    with control_left:
+    today = date.today()
+    booking_years = [date.fromisoformat(r["checkin"]).year for r in reservations if r.get("checkin")]
+    first_revenue_year = min([2024, *booking_years]) if booking_years else 2024
+    revenue_years = list(range(today.year, first_revenue_year - 1, -1))
+    period_col, year_col, date_col = st.columns([1.35, 0.7, 1.1], vertical_alignment="bottom")
+    with period_col:
         period = st.segmented_control("Revenue period", ["Daily", "Monthly", "Year to date"],
                                       default="Monthly", label_visibility="collapsed", key="revenue_period")
-    today = date.today()
+    with year_col:
+        revenue_year = st.selectbox("Year", revenue_years, key="revenue_display_year")
+    year_start = date(revenue_year, 1, 1)
+    last_day_of_year = date(revenue_year, 12, 31)
+    latest_day = min(today, last_day_of_year)
+    selected_year_is_current = revenue_year == today.year
     if period == "Daily":
-        with control_right:
-            selected_day = st.date_input("Choose a day", value=today, key="revenue_day")
+        with date_col:
+            selected_day = st.date_input(
+                "Choose a day",
+                value=today if selected_year_is_current else year_start,
+                min_value=year_start,
+                max_value=latest_day,
+                key=f"revenue_day_{revenue_year}",
+            )
         start, end = selected_day, selected_day + timedelta(days=1)
         period_label = selected_day.strftime("%A, %d %B %Y")
         period_values = booked_revenue_by_day(reservations, start, end)
@@ -1467,8 +1482,14 @@ elif page == "Revenue":
         chart_title = "A little context around your day"
         chart_note = "Daily gross across the 7 days ending on your selected date"
     elif period == "Monthly":
-        with control_right:
-            selected_month = st.date_input("Choose a month", value=today.replace(day=1), key="revenue_month")
+        with date_col:
+            selected_month = st.date_input(
+                "Choose a month",
+                value=today.replace(day=1) if selected_year_is_current else year_start,
+                min_value=year_start,
+                max_value=latest_day,
+                key=f"revenue_month_{revenue_year}",
+            )
         start = selected_month.replace(day=1)
         end = date(start.year + (start.month == 12), start.month % 12 + 1, 1)
         period_label = start.strftime("%B %Y")
@@ -1478,16 +1499,18 @@ elif page == "Revenue":
         chart_title = "Your month, night by night"
         chart_note = "Each point shows gross revenue from one calendar night"
     else:
-        start = date(today.year, 1, 1)
-        end = today + timedelta(days=1)
-        period_label = f"January – {today.strftime('%B %Y')}"
+        start = year_start
+        end = today + timedelta(days=1) if selected_year_is_current else date(revenue_year + 1, 1, 1)
+        period_label = (f"January – {today.strftime('%B %Y')}" if selected_year_is_current else str(revenue_year))
         period_values = booked_revenue_by_day(reservations, start, end)
+        final_month = today.month if selected_year_is_current else 12
         chart_values = {
-            date(today.year, month, 1): sum(value for day, value in period_values.items() if day.month == month)
-            for month in range(1, today.month + 1)
+            date(revenue_year, month, 1): sum(value for day, value in period_values.items() if day.month == month)
+            for month in range(1, final_month + 1)
         }
-        chart_title = "The year so far"
-        chart_note = "Monthly gross revenue from January through today"
+        chart_title = "The year so far" if selected_year_is_current else f"Revenue in {revenue_year}"
+        chart_note = ("Monthly gross revenue from January through today" if selected_year_is_current
+                      else f"Monthly gross revenue across {revenue_year}")
 
     gross = sum(period_values.values())
     booked_nights = len(period_values)
