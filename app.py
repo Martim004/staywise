@@ -1572,7 +1572,7 @@ elif page == "Revenue":
     export_years = list(range(current_year, first_export_year - 1, -1))
     export_year = st.selectbox("Revenue year", export_years, key="revenue_export_year")
     if export_year == current_year:
-        st.caption("A straightforward workbook with revenue summary, monthly totals, booking-source breakdown, daily ledger, and reservation details for the selected year.")
+        st.caption("A simple workbook with one monthly revenue chart, plus revenue summary, monthly totals, booking-source breakdown, daily ledger, and reservation details for the selected year.")
     else:
         st.caption("An Excel workbook with a KPI dashboard and chart, monthly summary, daily revenue ledger, and reservation details for the full selected year.")
     workbook = build_revenue_workbook(active_property["name"], export_year, reservations, date.today())
