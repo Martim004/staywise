@@ -157,7 +157,7 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
         earned = nights * rate if status in active_statuses else 0.0
         included.append((item, checkin, checkout, nights, rate, status, source, earned))
         channel_name = source.casefold()
-        channel = "Airbnb" if "airbnb" in channel_name else "Booking.com" if "booking" in channel_name else None
+        channel = "Airbnb" if "airbnb" in channel_name else None
         if status in active_statuses:
             active_stays += 1
             if channel:
@@ -240,7 +240,7 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
     dashboard["A8"].font = Font(name="Aptos Display", size=12, bold=True, color=navy)
     dashboard["A8"].alignment = Alignment(vertical="center")
     dashboard.merge_cells("G8:L8")
-    dashboard["G8"] = "Channel comparison"
+    dashboard["G8"] = "Airbnb channel summary"
     dashboard["G8"].font = Font(name="Aptos Display", size=12, bold=True, color=navy)
     dashboard["G8"].alignment = Alignment(vertical="center")
     dashboard.merge_cells("A9:F9")
@@ -248,7 +248,7 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
     dashboard["A9"].font = Font(name="Aptos", size=9, italic=True, color=muted)
     dashboard["A9"].alignment = Alignment(wrap_text=True, vertical="center")
     dashboard.merge_cells("G9:L9")
-    dashboard["G9"] = "Revenue from Airbnb and Booking.com stays only. Direct bookings are excluded from this comparison."
+    dashboard["G9"] = "Airbnb revenue only. Direct and other sources are excluded from this channel summary."
     dashboard["G9"].font = Font(name="Aptos", size=9, italic=True, color=muted)
     dashboard["G9"].alignment = Alignment(wrap_text=True, vertical="center")
     dashboard.row_dimensions[8].height = 25
@@ -260,10 +260,10 @@ def build_revenue_workbook(property_name: str, year: int, reservations: list[dic
     for month, (month_days, nights, revenue, nightly, occupancy) in enumerate(monthly, start=1):
         monthly_ws.append([date(year, month, 1).strftime("%B"), len(month_days), nights, revenue, nightly, occupancy])
 
-    channel_ws.append(["Booking source", "Active stays", "Gross revenue (€)", "Share of revenue"])
-    # Keep the comparison focused on the two marketplaces requested. Direct and
-    # other channels remain included in overall revenue and booking details.
-    for source in ("Airbnb", "Booking.com"):
+    channel_ws.append(["Channel", "Active stays", "Gross revenue (€)", "Share of revenue"])
+    # The focused channel sheet reports Airbnb only; overall totals still include
+    # active stays recorded from Direct and other sources.
+    for source in ("Airbnb",):
         totals = channel_totals.get(source, {"stays": 0, "revenue": 0.0})
         revenue = totals["revenue"]
         channel_ws.append([source, int(totals["stays"]), revenue, revenue / gross if gross else 0])

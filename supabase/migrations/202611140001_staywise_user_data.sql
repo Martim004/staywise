@@ -19,7 +19,6 @@ create table if not exists public.staywise_properties (
   latitude double precision not null default 38.719,
   longitude double precision not null default -9.165,
   airbnb_url text not null default '',
-  booking_url text not null default '',
   created_at timestamptz not null default now()
 );
 

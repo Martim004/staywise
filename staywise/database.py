@@ -175,7 +175,7 @@ def init_db() -> None:
             name TEXT NOT NULL, area TEXT NOT NULL DEFAULT '', bedrooms INTEGER NOT NULL DEFAULT 2,
             capacity INTEGER NOT NULL DEFAULT 4, latitude REAL NOT NULL DEFAULT 38.719,
             longitude REAL NOT NULL DEFAULT -9.165, airbnb_url TEXT NOT NULL DEFAULT '',
-            booking_url TEXT NOT NULL DEFAULT '', sample_data_enabled INTEGER NOT NULL DEFAULT 1,
+            sample_data_enabled INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS reservations (
@@ -333,6 +333,16 @@ def _safe_url(value: Any, label: str) -> str:
     return value
 
 
+def _safe_airbnb_url(value: Any, label: str) -> str:
+    value = _safe_url(value, label)
+    if value:
+        host = (urlsplit(value).hostname or "").casefold()
+        valid_host = host == "airbnb.com" or host.endswith(".airbnb.com") or host == "airbnb.pt" or host.endswith(".airbnb.pt")
+        if not valid_host:
+            raise ValueError(f"{label} URL must be an Airbnb link.")
+    return value
+
+
 def _validate_property(item: dict[str, Any]) -> dict[str, Any]:
     result = dict(item)
     result["name"] = _bounded_text(item, "name", 120, required=True)
@@ -351,8 +361,7 @@ def _validate_property(item: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(f"{key.capitalize()} must be a valid coordinate.") from exc
         if not math.isfinite(result[key]) or not low <= result[key] <= high:
             raise ValueError(f"{key.capitalize()} must be between {low} and {high}.")
-    result["airbnb_url"] = _safe_url(item.get("airbnb_url", ""), "Airbnb")
-    result["booking_url"] = _safe_url(item.get("booking_url", ""), "Booking")
+    result["airbnb_url"] = _safe_airbnb_url(item.get("airbnb_url", ""), "Airbnb")
     result["sample_data_enabled"] = bool(item.get("sample_data_enabled", True))
     return result
 
@@ -361,15 +370,14 @@ def add_property(item: dict[str, Any]) -> int:
     item = _validate_property(item)
     if _cloud_user():
         return int(_pg_write("""INSERT INTO public.staywise_properties
-            (name,area,bedrooms,capacity,latitude,longitude,airbnb_url,booking_url,sample_data_enabled)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+            (name,area,bedrooms,capacity,latitude,longitude,airbnb_url,sample_data_enabled)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
             (item["name"],item.get("area", ""),item["bedrooms"],item["capacity"],item["latitude"],
-             item["longitude"],item.get("airbnb_url", ""),item.get("booking_url", ""),
-             item["sample_data_enabled"]), returning=True))
+             item["longitude"],item.get("airbnb_url", ""),item["sample_data_enabled"]), returning=True))
     with connect() as conn:
         cur = conn.execute("""INSERT INTO properties
-            (name,area,bedrooms,capacity,latitude,longitude,airbnb_url,booking_url,sample_data_enabled)
-            VALUES (:name,:area,:bedrooms,:capacity,:latitude,:longitude,:airbnb_url,:booking_url,:sample_data_enabled)""", item)
+            (name,area,bedrooms,capacity,latitude,longitude,airbnb_url,sample_data_enabled)
+            VALUES (:name,:area,:bedrooms,:capacity,:latitude,:longitude,:airbnb_url,:sample_data_enabled)""", item)
         return int(cur.lastrowid)
 
 
@@ -377,13 +385,13 @@ def update_property(property_id: int, item: dict[str, Any]) -> None:
     item = _validate_property(item)
     if _cloud_user():
         _pg_write("""UPDATE public.staywise_properties SET name=%s,area=%s,bedrooms=%s,capacity=%s,
-            latitude=%s,longitude=%s,airbnb_url=%s,booking_url=%s WHERE id=%s""",
+            latitude=%s,longitude=%s,airbnb_url=%s WHERE id=%s""",
             (item["name"],item["area"],item["bedrooms"],item["capacity"],item["latitude"],
-             item["longitude"],item["airbnb_url"],item["booking_url"],property_id))
+             item["longitude"],item["airbnb_url"],property_id))
         return
     with connect() as conn:
         conn.execute("""UPDATE properties SET name=:name,area=:area,bedrooms=:bedrooms,capacity=:capacity,
-            latitude=:latitude,longitude=:longitude,airbnb_url=:airbnb_url,booking_url=:booking_url WHERE id=:id""",
+            latitude=:latitude,longitude=:longitude,airbnb_url=:airbnb_url WHERE id=:id""",
             {**item, "id": property_id})
 
 
@@ -604,7 +612,7 @@ def add_comparable(item: dict[str, Any]) -> int:
     values["name"] = _bounded_text(values, "name", 160, required=True)
     values["area"] = _bounded_text(values, "area", 200)
     values["notes"] = _bounded_text(values, "notes", 2000)
-    values["url"] = _safe_url(values.get("url", ""), "Comparable")
+    values["url"] = _safe_airbnb_url(values.get("url", ""), "Airbnb comparable")
     try:
         values["bedrooms"] = int(values["bedrooms"])
         values["capacity"] = int(values["capacity"])
@@ -733,7 +741,7 @@ def seed_demo_data() -> None:
         sample_id = add_property({
             "name": DEMO_PROPERTY_NAME, "area": "Campo de Ourique, Lisbon (approximate)",
             "bedrooms": 2, "capacity": 4, "latitude": 38.719, "longitude": -9.165,
-            "airbnb_url": "", "booking_url": "",
+            "airbnb_url": "",
         })
         sample = next(p for p in get_properties() if p["id"] == sample_id)
     property_id = int(sample["id"])

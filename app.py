@@ -178,7 +178,7 @@ def seed_fictional_property(property_id: int, city: str, bedrooms: int, capacity
         "Alex Example", "Jamie Sample", "Taylor Demo", "Morgan Fiction",
         "Riley Sample", "Casey Example", "Sam Demo", "Avery Sample",
     ]
-    channels = ["Airbnb (fictional sample)", "Booking.com (fictional sample)", "Direct (fictional sample)"]
+    channels = ["Airbnb (fictional sample)", "Direct (fictional sample)"]
     seasonal_factors = {
         1: 0.78, 2: 0.82, 3: 0.90, 4: 1.00, 5: 1.08, 6: 1.22,
         7: 1.34, 8: 1.32, 9: 1.15, 10: 1.00, 11: 0.86, 12: 0.96,
@@ -398,7 +398,6 @@ def render_airbnb_report_import(existing_properties: list[dict], key_prefix: str
                 "latitude": latitude,
                 "longitude": longitude,
                 "airbnb_url": str(listing_url or "").strip(),
-                "booking_url": "",
                 "sample_data_enabled": False,
             })
             created_property = True
@@ -515,9 +514,7 @@ if not properties:
         new_bedrooms = p3.number_input("Bedrooms", min_value=0, max_value=30, value=2)
         new_capacity = st.number_input("Guest capacity", min_value=1, max_value=100, value=4)
         st.caption("The map uses an approximate city location. You can refine the map pin later in property settings.")
-        p1, p2 = st.columns(2)
-        new_airbnb = p1.text_input("Airbnb listing URL")
-        new_booking = p2.text_input("Booking.com listing URL")
+        new_airbnb = st.text_input("Airbnb listing URL")
         if st.form_submit_button("Add property", type="primary"):
             if not new_name.strip():
                 st.error("Enter a name for this property.")
@@ -526,7 +523,7 @@ if not properties:
                 new_area = area_with_city(new_area, new_city)
                 new_id = add_property({"name":new_name.strip(),"area":new_area,"bedrooms":int(new_bedrooms),
                     "capacity":int(new_capacity),"latitude":new_lat,"longitude":new_lon,
-                    "airbnb_url":new_airbnb.strip(),"booking_url":new_booking.strip()})
+                    "airbnb_url":new_airbnb.strip()})
                 seed_fictional_property(new_id, new_city, int(new_bedrooms), int(new_capacity), float(new_lat), float(new_lon))
                 st.session_state["pending_property_id"] = new_id
                 st.rerun()
@@ -715,7 +712,7 @@ STAYWISE_HELP = {
     ),
     "How do I compare nearby rentals?": (
         "Open **Market**, set the radius and matching filters, and choose **Load / refresh Airbnb comparables**. "
-        "Inside Airbnb provides snapshot data. Add Booking.com listings as manual comparisons."
+        "Inside Airbnb provides Airbnb snapshot data; use manual Airbnb comparisons for additional listings."
     ),
     "How do I export revenue?": (
         "Open **Revenue**, choose the report year, and select **Download revenue Excel workbook**."
@@ -1082,9 +1079,7 @@ elif page == "Overview":
             new_bedrooms = p3.number_input("Bedrooms", min_value=0, max_value=30, value=2, key="new_property_bedrooms")
             new_capacity = st.number_input("Guest capacity", min_value=1, max_value=100, value=4, key="new_property_capacity")
             st.caption("The map uses an approximate city location. You can refine the map pin later in property settings.")
-            p1,p2 = st.columns(2)
-            new_airbnb = p1.text_input("Airbnb listing URL")
-            new_booking = p2.text_input("Booking.com listing URL")
+            new_airbnb = st.text_input("Airbnb listing URL")
             if st.form_submit_button("Add property", type="primary"):
                 if not new_name.strip():
                     st.error("Enter a name for this property.")
@@ -1093,16 +1088,13 @@ elif page == "Overview":
                     new_area = area_with_city(add_area, new_city)
                     new_id = add_property({"name":new_name.strip(),"area":new_area,"bedrooms":int(new_bedrooms),
                         "capacity":int(new_capacity),"latitude":new_lat,"longitude":new_lon,
-                        "airbnb_url":new_airbnb.strip(),"booking_url":new_booking.strip()})
+                        "airbnb_url":new_airbnb.strip()})
                     seed_fictional_property(new_id, new_city, int(new_bedrooms), int(new_capacity), float(new_lat), float(new_lon))
                     st.session_state["pending_property_id"] = new_id
                     st.rerun()
         st.divider()
-    link_cols = st.columns(2)
     if active_property.get("airbnb_url"):
-        link_cols[0].link_button("Open Airbnb listing", active_property["airbnb_url"])
-    if active_property.get("booking_url"):
-        link_cols[1].link_button("Open Booking.com listing", active_property["booking_url"])
+        st.link_button("Open Airbnb listing", active_property["airbnb_url"])
 
 
 elif page == "Bookings":
@@ -1218,7 +1210,7 @@ elif page == "Bookings":
             guests = c3.number_input("Guests", min_value=1, max_value=30, value=2)
             rate = c4.number_input("Nightly rate (€)", min_value=0.0, value=120.0, step=5.0)
             c1,c2 = st.columns(2)
-            source = c1.selectbox("Booking source", ["Airbnb", "Booking.com", "Direct", "Other"])
+            source = c1.selectbox("Booking source", ["Airbnb", "Direct", "Other"])
             status = c2.selectbox("Status", ["confirmed", "completed", "cancelled"])
             notes = st.text_area("Notes")
             submitted = st.form_submit_button("Save booking", type="primary", disabled=READ_ONLY)
@@ -1349,7 +1341,7 @@ elif page == "Calendar":
 elif page == "Market":
     st.markdown('<div class="eyebrow">Know your neighborhood</div>', unsafe_allow_html=True)
     st.title("Market & property")
-    st.markdown('<p class="subtle">Compare nearby Lisbon or Porto Airbnb listings from Inside Airbnb, filtered by your chosen radius and property size. You can also add manually observed Booking.com or other listings.</p>', unsafe_allow_html=True)
+    st.markdown('<p class="subtle">Compare nearby Lisbon or Porto Airbnb listings from Inside Airbnb, filtered by your chosen radius and property size. You can also add manually observed Airbnb listings.</p>', unsafe_allow_html=True)
     with st.expander("Property and search location", expanded=not settings.get("property_area")):
         property_city = st.selectbox(
             "City",
@@ -1383,13 +1375,11 @@ elif page == "Market":
             capacity = c1.number_input("Guest capacity", min_value=1, max_value=100, value=int(settings.get("capacity",4)))
             latitude = c2.number_input("Latitude", min_value=-90.0, max_value=90.0, value=float(settings.get("latitude",38.719)), format="%.6f")
             longitude = c3.number_input("Longitude", min_value=-180.0, max_value=180.0, value=float(settings.get("longitude",-9.165)), format="%.6f")
-            c1,c2 = st.columns(2)
-            airbnb_url = c1.text_input("Airbnb listing URL", active_property.get("airbnb_url", ""))
-            booking_url = c2.text_input("Booking.com listing URL", active_property.get("booking_url", ""))
+            airbnb_url = st.text_input("Airbnb listing URL", active_property.get("airbnb_url", ""))
             st.caption("Choose Lisbon or Porto and set accurate coordinates for the radius search.")
             if st.form_submit_button("Save property settings", type="primary", disabled=READ_ONLY):
                 update_property(active_property_id, {"name":property_name,"area":area_with_city(area, property_city),"bedrooms":int(bedrooms),"capacity":int(capacity),
-                               "latitude":float(latitude),"longitude":float(longitude),"airbnb_url":airbnb_url,"booking_url":booking_url})
+                               "latitude":float(latitude),"longitude":float(longitude),"airbnb_url":airbnb_url})
                 st.success("Property settings saved."); st.rerun()
 
     st.subheader("Nearby Airbnb market · Inside Airbnb")
@@ -1436,7 +1426,7 @@ elif page == "Market":
                     m4.metric("Median review score", f"{nearby[rating_col].median():.1f}/5" if rating_col and nearby[rating_col].notna().any() else "—")
                     suggested = float(nearby["price"].median()) * (1 + airbnb_adjustment / 100)
                     m5.metric("Suggested nightly rate", money(suggested), help="Filtered Airbnb median adjusted by your chosen percentage")
-                    st.caption("Rate guide: the nearby median is a simple benchmark. It does not account for date-specific demand, quality, fees, or Booking.com inventory.")
+                    st.caption("Rate guide: the nearby median is a simple benchmark. It does not account for date-specific demand, property quality, or fees.")
                     st.subheader("Nearby competition map")
                     st.caption(f"{len(nearby):,} matching Airbnb listings within {radius_km:.1f} km. The map shows up to 300 closest pins; the table and CSV cover the full result.")
                     home_lat, home_lon = float(settings["latitude"]), float(settings["longitude"])
@@ -1523,7 +1513,7 @@ elif page == "Market":
             float(radius_km), comps,
         )
     market_city_label = city_for_area(active_property.get("area", ""))
-    st.markdown(f"Data: [Inside Airbnb {market_city_label} listings]({SOURCE_PAGE}). This public dataset contains Airbnb listings only; Booking.com prices are not supplied.")
+    st.markdown(f"Data: [Inside Airbnb {market_city_label} listings]({SOURCE_PAGE}). This public dataset contains Airbnb listings only.")
     st.subheader("Add a comparable listing")
     with st.form("add_comp", clear_on_submit=True):
         c1,c2,c3 = st.columns(3)
@@ -1539,7 +1529,7 @@ elif page == "Market":
         c1,c2 = st.columns(2)
         comp_lat = c1.number_input("Comparable latitude", min_value=-90.0, max_value=90.0, value=float(settings.get("latitude",38.719)), format="%.6f", disabled=not comp_map)
         comp_lon = c2.number_input("Comparable longitude", min_value=-180.0, max_value=180.0, value=float(settings.get("longitude",-9.165)), format="%.6f", disabled=not comp_map)
-        url = st.text_input("Listing URL (optional)")
+        url = st.text_input("Airbnb listing URL (optional)")
         comp_notes = st.text_input("Notes: amenities, size, or other differences")
         comp_submit = st.form_submit_button("Add comparison", type="primary", disabled=READ_ONLY)
     if comp_submit:
