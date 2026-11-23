@@ -1145,6 +1145,48 @@ elif page == "Overview":
         ):
             confirm_house_removal()
     st.markdown('<p class="subtle">Your rental calendar and local market context in one calm workspace.</p>', unsafe_allow_html=True)
+    today = date.today()
+    today_iso = today.isoformat()
+    active_stays = [r for r in reservations if r["status"] in {"confirmed", "completed"}]
+    arrivals_today = [r for r in active_stays if r["checkin"] == today_iso]
+    departures_today = [r for r in active_stays if r["checkout"] == today_iso]
+    cleanings_today = [
+        task for task in get_checkout_cleanings(active_property_id)
+        if task["checkout"] == today_iso and not task["completed"]
+    ]
+    st.subheader("Today")
+    st.caption(today.strftime("%d %B %Y"))
+    arrivals_panel, departures_panel, cleanings_panel = st.columns(3)
+    with arrivals_panel.container(border=True):
+        st.metric("Arrivals today", len(arrivals_today))
+        checkin = property_stay_time("checkin_time")
+        st.caption(f"Standard check-in: {checkin:%H:%M}" if checkin is not None else "Check-in time not set")
+        for reservation in arrivals_today:
+            st.text(reservation["guest_name"])
+        if not arrivals_today:
+            st.caption("No arrivals today.")
+        st.button("Open bookings", key="today_arrivals_bookings", width="stretch",
+                  on_click=st.session_state.update, args=({"workspace_page": "Bookings"},))
+    with departures_panel.container(border=True):
+        st.metric("Departures today", len(departures_today))
+        checkout = property_stay_time("checkout_time")
+        st.caption(f"Standard check-out: {checkout:%H:%M}" if checkout is not None else "Check-out time not set")
+        for reservation in departures_today:
+            st.text(reservation["guest_name"])
+        if not departures_today:
+            st.caption("No departures today.")
+        st.button("Open bookings", key="today_departures_bookings", width="stretch",
+                  on_click=st.session_state.update, args=({"workspace_page": "Bookings"},))
+    with cleanings_panel.container(border=True):
+        st.metric("Pending cleanings today", len(cleanings_today))
+        for task in cleanings_today:
+            st.text(f"{task['scheduled_time']} · Booking #{task['reservation_id']}")
+        if not cleanings_today:
+            st.caption("No pending cleanings today.")
+        st.button("Open calendar", key="today_cleanings_calendar", width="stretch",
+                  on_click=st.session_state.update,
+                  args=({"workspace_page": "Calendar", "calendar_target_date": today},))
+
     cols = st.columns(2)
     cols[0].metric("Blocked date ranges", len(blocks))
     cols[1].metric("Saved comparisons", len(comps))
