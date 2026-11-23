@@ -1239,7 +1239,7 @@ elif page == "Overview":
                         type="primary" if days_until <= 1 else "secondary",
                         width="stretch",
                         on_click=st.session_state.update,
-                        args=({"workspace_page": "Bookings",
+                        args=({"workspace_page": "Bookings", "_open_booking_tab": "Cleaning",
                                f"selected_checkout_{active_property_id}": reservation["id"]},),
                     )
 
@@ -1299,105 +1299,107 @@ elif page == "Overview":
 elif page == "Bookings":
     st.markdown('<div class="eyebrow">Guest and stay records</div>', unsafe_allow_html=True)
     st.title("Bookings")
-    st.markdown('<p class="subtle">Keep reservations, contact details, and owner-blocked dates together. Dates are check-in inclusive and check-out exclusive.</p>', unsafe_allow_html=True)
+    st.markdown('<p class="subtle">Find reservations, add stays, and manage check-out cleanings.</p>', unsafe_allow_html=True)
     checkin_time = property_stay_time("checkin_time")
     checkout_time = property_stay_time("checkout_time")
     checkin_label = checkin_time.strftime("%H:%M") if checkin_time is not None else "Not set"
     checkout_label = checkout_time.strftime("%H:%M") if checkout_time is not None else "Not set"
     st.caption(f"Standard check-in: {checkin_label} · Standard check-out: {checkout_label}")
 
-    today = date.today().isoformat()
-    upcoming_checkouts = sorted(
-        (
-            reservation for reservation in reservations
-            if reservation["status"] in {"confirmed", "completed"}
-            and reservation["checkout"] >= today
-        ),
-        key=lambda reservation: (reservation["checkout"], reservation["id"]),
-    )
-    if upcoming_checkouts:
-        cleaning_by_booking = {
-            task["reservation_id"]: task for task in get_checkout_cleanings(active_property_id)
-        }
-        selection_key = f"selected_checkout_{active_property_id}"
-        checkouts = {reservation["id"]: reservation for reservation in upcoming_checkouts}
-        booking_id = st.session_state.get(selection_key)
-        if booking_id not in checkouts:
-            booking_id = next((rid for rid in checkouts if rid not in cleaning_by_booking), next(iter(checkouts)))
-        selected_checkout = checkouts[booking_id]
-        selected_cleaning = cleaning_by_booking.get(booking_id)
-        departures, cleaning = st.columns([3, 2], gap="medium")
-        with departures.container(border=True):
-            st.subheader("Upcoming check-outs")
-            with st.container(height=345 if len(upcoming_checkouts) > 6 else "content", border=False):
-                for reservation in upcoming_checkouts:
-                    rid = reservation["id"]
-                    task = cleaning_by_booking.get(rid)
-                    status = "Completed" if task and task["completed"] else task["scheduled_time"] if task else "To schedule"
-                    checkout_label = date.fromisoformat(reservation["checkout"]).strftime("%d %b %Y")
-                    st.button(
-                        f"{checkout_label} · {escape_markdown(reservation['guest_name'])} · "
-                        f"{escape_markdown(reservation['source'])} · {status}",
-                        key=f"select_checkout_{rid}", width="stretch",
-                        type="primary" if rid == booking_id else "tertiary",
-                        on_click=st.session_state.update, args=({selection_key: rid},),
-                    )
-        with cleaning.container(border=True):
-            st.subheader("Cleaning")
-            st.text(f"{selected_checkout['checkout']} · {selected_checkout['guest_name']}")
-            st.caption(f"Standard check-out: {checkout_time:%H:%M}" if checkout_time is not None
-                       else "Standard check-out: Not set")
-            if selected_cleaning:
-                status = "Completed" if selected_cleaning["completed"] else "Scheduled"
-                st.info(f"{status} · {selected_cleaning['scheduled_time']}")
-                cleaning_day = date.fromisoformat(selected_checkout["checkout"])
-                st.button(
-                    "View in Calendar",
-                    on_click=st.session_state.update,
-                    args=({"workspace_page": "Calendar", "calendar_target_date": cleaning_day},),
-                )
-            else:
-                checkout_day = selected_checkout["checkout"]
-                same_day_arrival = any(
-                    reservation["checkin"] == checkout_day and reservation["status"] in {"confirmed", "completed"}
-                    for reservation in reservations
-                )
-                arrival_time = checkin_time if same_day_arrival else None
-                st.caption(f"Next check-in on this date: {arrival_time:%H:%M}" if arrival_time is not None
-                           else "No check-in time set for this date")
-                cleaning_time = st.time_input(
-                    "Cleaning time", value=checkout_time or time(11), step=60, key=f"cleaning_time_{booking_id}",
-                )
-                too_late = arrival_time is not None and cleaning_time >= arrival_time
-                early = checkout_time is not None and cleaning_time < checkout_time
-                early_confirmed = False
-
-                if too_late:
-                    st.error(f"Choose a cleaning time before the next check-in at {arrival_time:%H:%M}.")
-                elif arrival_time is not None:
-                    cleaning_day = date.fromisoformat(checkout_day)
-                    remaining = datetime.combine(cleaning_day, arrival_time) - datetime.combine(cleaning_day, cleaning_time)
-                    minutes = int(remaining.total_seconds() // 60)
-                    st.caption(f"{minutes} min until the next check-in at {arrival_time:%H:%M}.")
-                if early and not too_late:
-                    st.error(f"Guests may still be in the property until {checkout_time:%H:%M}.")
-                    early_confirmed = st.checkbox(
-                        "An early check-out has been arranged.", key=f"early_checkout_{booking_id}_{cleaning_time:%H%M}",
-                    )
-
-                if st.button("Schedule cleaning", disabled=too_late or (early and not early_confirmed)):
-                    if schedule_checkout_cleaning(active_property_id, booking_id, cleaning_time):
-                        st.rerun()
-                    else:
-                        st.warning("This check-out is no longer available for scheduling. Reload Bookings.")
-    else:
-        st.info("No upcoming check-outs for this property.")
-
     requested_tab = st.session_state.pop("_open_booking_tab", None)
     default_tab = "Block dates" if st.session_state.pop("_open_block_dates_tab", False) else requested_tab
-    tab_add, tab_block, tab_list, tab_airbnb = st.tabs(
-        ["Add booking", "Block dates", "All bookings", "Import Airbnb report"], default=default_tab,
+    tab_list, tab_add, tab_airbnb, tab_cleaning, tab_block = st.tabs(
+        ["All bookings", "Add booking", "Import Airbnb report", "Cleaning", "Block dates"],
+        default=default_tab,
     )
+    with tab_cleaning:
+        today = date.today().isoformat()
+        upcoming_checkouts = sorted(
+            (
+                reservation for reservation in reservations
+                if reservation["status"] in {"confirmed", "completed"}
+                and reservation["checkout"] >= today
+            ),
+            key=lambda reservation: (reservation["checkout"], reservation["id"]),
+        )
+        if upcoming_checkouts:
+            cleaning_by_booking = {
+                task["reservation_id"]: task for task in get_checkout_cleanings(active_property_id)
+            }
+            selection_key = f"selected_checkout_{active_property_id}"
+            checkouts = {reservation["id"]: reservation for reservation in upcoming_checkouts}
+            booking_id = st.session_state.get(selection_key)
+            if booking_id not in checkouts:
+                booking_id = next((rid for rid in checkouts if rid not in cleaning_by_booking), next(iter(checkouts)))
+            selected_checkout = checkouts[booking_id]
+            selected_cleaning = cleaning_by_booking.get(booking_id)
+            departures, cleaning = st.columns([3, 2], gap="medium")
+            with departures.container(border=True):
+                st.subheader("Upcoming check-outs")
+                with st.container(height=345 if len(upcoming_checkouts) > 6 else "content", border=False):
+                    for reservation in upcoming_checkouts:
+                        rid = reservation["id"]
+                        task = cleaning_by_booking.get(rid)
+                        status = "Completed" if task and task["completed"] else task["scheduled_time"] if task else "To schedule"
+                        checkout_label = date.fromisoformat(reservation["checkout"]).strftime("%d %b %Y")
+                        st.button(
+                            f"{checkout_label} · {escape_markdown(reservation['guest_name'])} · "
+                            f"{escape_markdown(reservation['source'])} · {status}",
+                            key=f"select_checkout_{rid}", width="stretch",
+                            type="primary" if rid == booking_id else "tertiary",
+                            on_click=st.session_state.update, args=({selection_key: rid},),
+                        )
+            with cleaning.container(border=True):
+                st.subheader("Cleaning")
+                st.text(f"{selected_checkout['checkout']} · {selected_checkout['guest_name']}")
+                st.caption(f"Standard check-out: {checkout_time:%H:%M}" if checkout_time is not None
+                           else "Standard check-out: Not set")
+                if selected_cleaning:
+                    status = "Completed" if selected_cleaning["completed"] else "Scheduled"
+                    st.info(f"{status} · {selected_cleaning['scheduled_time']}")
+                    cleaning_day = date.fromisoformat(selected_checkout["checkout"])
+                    st.button(
+                        "View in Calendar",
+                        on_click=st.session_state.update,
+                        args=({"workspace_page": "Calendar", "calendar_target_date": cleaning_day},),
+                    )
+                else:
+                    checkout_day = selected_checkout["checkout"]
+                    same_day_arrival = any(
+                        reservation["checkin"] == checkout_day and reservation["status"] in {"confirmed", "completed"}
+                        for reservation in reservations
+                    )
+                    arrival_time = checkin_time if same_day_arrival else None
+                    st.caption(f"Next check-in on this date: {arrival_time:%H:%M}" if arrival_time is not None
+                               else "No check-in time set for this date")
+                    cleaning_time = st.time_input(
+                        "Cleaning time", value=checkout_time or time(11), step=60, key=f"cleaning_time_{booking_id}",
+                    )
+                    too_late = arrival_time is not None and cleaning_time >= arrival_time
+                    early = checkout_time is not None and cleaning_time < checkout_time
+                    early_confirmed = False
+
+                    if too_late:
+                        st.error(f"Choose a cleaning time before the next check-in at {arrival_time:%H:%M}.")
+                    elif arrival_time is not None:
+                        cleaning_day = date.fromisoformat(checkout_day)
+                        remaining = datetime.combine(cleaning_day, arrival_time) - datetime.combine(cleaning_day, cleaning_time)
+                        minutes = int(remaining.total_seconds() // 60)
+                        st.caption(f"{minutes} min until the next check-in at {arrival_time:%H:%M}.")
+                    if early and not too_late:
+                        st.error(f"Guests may still be in the property until {checkout_time:%H:%M}.")
+                        early_confirmed = st.checkbox(
+                            "An early check-out has been arranged.", key=f"early_checkout_{booking_id}_{cleaning_time:%H%M}",
+                        )
+
+                    if st.button("Schedule cleaning", disabled=too_late or (early and not early_confirmed)):
+                        if schedule_checkout_cleaning(active_property_id, booking_id, cleaning_time):
+                            st.rerun()
+                        else:
+                            st.warning("This check-out is no longer available for scheduling. Reload Bookings.")
+        else:
+            st.info("No upcoming check-outs for this property.")
+
     with tab_add:
         with st.form("new_booking", clear_on_submit=True):
             c1,c2,c3 = st.columns(3)
