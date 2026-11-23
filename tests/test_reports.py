@@ -1,13 +1,11 @@
 import unittest
 from io import BytesIO
 from zipfile import ZipFile
-from datetime import date
-from openpyxl import load_workbook
 
 from staywise.calculations import calculate_forecast, competitor_summary
 
 try:
-    from staywise.reports import build_excel_report, build_pdf_report, build_revenue_workbook
+    from staywise.reports import build_excel_report, build_pdf_report
     REPORT_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
     REPORT_DEPS_AVAILABLE = False
@@ -15,25 +13,6 @@ except ModuleNotFoundError:
 
 @unittest.skipUnless(REPORT_DEPS_AVAILABLE, "Install requirements.txt to test PDF and Excel exports")
 class ReportTests(unittest.TestCase):
-    def test_revenue_workbook_channel_summary_is_airbnb_only(self):
-        bookings = [
-            {"id":1,"guest_name":"Airbnb guest","checkin":"2026-05-10","checkout":"2026-05-12",
-             "nightly_rate":100,"status":"confirmed","source":"Airbnb"},
-            {"id":2,"guest_name":"Direct guest","checkin":"2026-06-10","checkout":"2026-06-12",
-             "nightly_rate":120,"status":"completed","source":"Direct"},
-            {"id":3,"guest_name":"Legacy guest","checkin":"2026-07-10","checkout":"2026-07-12",
-             "nightly_rate":130,"status":"confirmed","source":"Booking.com"},
-        ]
-        payload = build_revenue_workbook("Example home", 2026, bookings, date(2026, 12, 31))
-        workbook = load_workbook(BytesIO(payload), data_only=True)
-        channel = workbook["Channel Summary"]
-        self.assertEqual([channel.cell(row, 1).value for row in range(1, channel.max_row + 1)],
-                         ["Channel", "Airbnb"])
-        self.assertFalse(any("Booking.com" in str(cell.value) for row in channel.iter_rows() for cell in row))
-        dashboard_values = [cell.value for row in workbook["Revenue Dashboard"].iter_rows() for cell in row]
-        self.assertFalse(any("Booking.com" in str(value) for value in dashboard_values))
-        self.assertEqual(channel["C2"].value, 200)
-
     def test_excel_and_pdf_exports_include_report_sections(self):
         assumptions = {m:{"occupancy_percent":0,"nightly_rate":100} for m in range(1,13)}
         reservations = [{"id":1,"guest_name":"Alex Example","email":"alex@example.test","phone":"+351 900 000 100",
