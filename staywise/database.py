@@ -8,6 +8,9 @@ import calendar
 import uuid
 import json
 import math
+from copy import deepcopy
+from functools import wraps
+from time import monotonic
 from urllib.parse import urlsplit
 from contextvars import ContextVar
 from datetime import datetime
@@ -19,6 +22,51 @@ from .calculations import validate_reservation
 
 
 _authenticated_user_id: ContextVar[str | None] = ContextVar("staywise_authenticated_user_id", default=None)
+
+
+def _session_read_cache():
+    """Private read cache belongs to the current Streamlit session and verified account."""
+    if not _cloud_user():
+        return None
+    from streamlit.runtime.scriptrunner_utils.script_run_context import get_script_run_ctx
+    if get_script_run_ctx(suppress_warning=True) is None:
+        return None
+    import streamlit as st
+    state = st.session_state.get("_staywise_private_reads")
+    if state is None or state["owner"] != _cloud_user():
+        state = {"owner": _cloud_user(), "entries": {}}
+        st.session_state["_staywise_private_reads"] = state
+    return state["entries"]
+
+
+def _reuse_session_read(function):
+    @wraps(function)
+    def read(*args, **kwargs):
+        cache = _session_read_cache()
+        if cache is None:
+            return function(*args, **kwargs)
+        key = (function.__name__, args, tuple(sorted(kwargs.items())))
+        cached = cache.get(key)
+        if cached is not None and monotonic() - cached[0] < 10:
+            return deepcopy(cached[1])
+        result = function(*args, **kwargs)
+        if len(cache) >= 8:
+            cache.clear()
+        cache[key] = (monotonic(), deepcopy(result))
+        return result
+    return read
+
+
+def _refresh_session_reads_after_write(function):
+    @wraps(function)
+    def write(*args, **kwargs):
+        try:
+            return function(*args, **kwargs)
+        finally:
+            cache = _session_read_cache()
+            if cache is not None:
+                cache.clear()
+    return write
 
 
 def set_authenticated_user(user_id: str | None) -> None:
@@ -164,6 +212,7 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+@_refresh_session_reads_after_write
 def init_db() -> None:
     if _cloud_user():
         _pg_ready()
@@ -263,6 +312,7 @@ def get_properties() -> list[dict[str, Any]]:
     return _rows("SELECT * FROM properties ORDER BY id")
 
 
+@_reuse_session_read
 def get_workspace_bootstrap() -> tuple[dict[str, str], list[dict[str, Any]]]:
     """Load settings and properties together to avoid opening two DB connections per rerun."""
     settings = DEFAULTS.copy()
@@ -279,6 +329,7 @@ def get_workspace_bootstrap() -> tuple[dict[str, str], list[dict[str, Any]]]:
     return settings, [dict(row) for row in properties]
 
 
+@_reuse_session_read
 def get_property_workspace_data(property_id: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     """Fetch one property's reservations, blocks, and comparables in a single DB connection."""
     if _cloud_user():
@@ -366,6 +417,7 @@ def _validate_property(item: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+@_refresh_session_reads_after_write
 def add_property(item: dict[str, Any]) -> int:
     item = _validate_property(item)
     if _cloud_user():
@@ -381,6 +433,7 @@ def add_property(item: dict[str, Any]) -> int:
         return int(cur.lastrowid)
 
 
+@_refresh_session_reads_after_write
 def update_property(property_id: int, item: dict[str, Any]) -> None:
     item = _validate_property(item)
     if _cloud_user():
@@ -395,6 +448,7 @@ def update_property(property_id: int, item: dict[str, Any]) -> None:
             {**item, "id": property_id})
 
 
+@_refresh_session_reads_after_write
 def update_property_stay_hours(
     property_id: int, checkin_time: time | None, checkout_time: time | None
 ) -> None:
@@ -409,6 +463,7 @@ def update_property_stay_hours(
                      (checkin, checkout, property_id))
 
 
+@_refresh_session_reads_after_write
 def delete_property(property_id: int) -> None:
     """Delete a property and all reservations, blocked dates, and comparables attached to it."""
     if _cloud_user():
@@ -431,6 +486,7 @@ def get_reservations(property_id: int | None = None) -> list[dict[str, Any]]:
     return _rows("SELECT * FROM reservations WHERE property_id=? ORDER BY checkin, id", (property_id,))
 
 
+@_refresh_session_reads_after_write
 def add_reservation(item: dict[str, Any]) -> int:
     properties = get_properties()
     if not properties:
@@ -457,6 +513,7 @@ def add_reservation(item: dict[str, Any]) -> int:
         return int(cur.lastrowid)
 
 
+@_refresh_session_reads_after_write
 def add_reservations_batch(items: list[dict[str, Any]]) -> int:
     """Validate and insert a property's fictional sample stays in one database batch."""
     if not items:
@@ -509,6 +566,7 @@ def add_reservations_batch(items: list[dict[str, Any]]) -> int:
     return len(accepted)
 
 
+@_refresh_session_reads_after_write
 def delete_reservation(reservation_id: int) -> None:
     if _cloud_user():
         _pg_write("DELETE FROM public.staywise_reservations WHERE id=%s", (reservation_id,))
@@ -517,6 +575,7 @@ def delete_reservation(reservation_id: int) -> None:
         conn.execute("DELETE FROM reservations WHERE id=?", (reservation_id,))
 
 
+@_reuse_session_read
 def get_checkout_cleanings(property_id: int) -> list[dict[str, Any]]:
     if _cloud_user():
         return _pg_rows("""SELECT c.reservation_id, r.checkout,
@@ -531,6 +590,7 @@ def get_checkout_cleanings(property_id: int) -> list[dict[str, Any]]:
         ORDER BY r.checkout,c.scheduled_time,c.reservation_id""", (property_id,))
 
 
+@_refresh_session_reads_after_write
 def schedule_checkout_cleaning(property_id: int, reservation_id: int, scheduled_time: time) -> bool:
     """Schedule one cleaning per active checkout without replacing an existing task."""
     clock = scheduled_time.isoformat(timespec="minutes")
@@ -548,6 +608,7 @@ def schedule_checkout_cleaning(property_id: int, reservation_id: int, scheduled_
             ON CONFLICT (reservation_id) DO NOTHING""", params).rowcount == 1
 
 
+@_refresh_session_reads_after_write
 def update_checkout_cleaning(
     property_id: int, reservation_id: int, scheduled_time: time, *, early_confirmed: bool = False
 ) -> bool:
@@ -582,6 +643,7 @@ def update_checkout_cleaning(
                 SELECT id FROM reservations WHERE property_id=?)""", params).rowcount == 1
 
 
+@_refresh_session_reads_after_write
 def cancel_checkout_cleaning(property_id: int, reservation_id: int) -> bool:
     params = (reservation_id, property_id)
     if _cloud_user():
@@ -595,6 +657,7 @@ def cancel_checkout_cleaning(property_id: int, reservation_id: int) -> bool:
                 SELECT id FROM reservations WHERE property_id=?)""", params).rowcount == 1
 
 
+@_refresh_session_reads_after_write
 def complete_checkout_cleaning(property_id: int, reservation_id: int) -> None:
     params = (reservation_id, property_id)
     if _cloud_user():
@@ -609,6 +672,7 @@ def complete_checkout_cleaning(property_id: int, reservation_id: int) -> None:
                 SELECT id FROM reservations WHERE property_id=? AND status IN ('confirmed','completed'))""", params)
 
 
+@_refresh_session_reads_after_write
 def add_blocked_dates(start_date: str, end_date: str, reason: str = "", property_id: int | None = None) -> int:
     try:
         start, end = date.fromisoformat(start_date), date.fromisoformat(end_date)
@@ -643,6 +707,7 @@ def get_blocked_dates(property_id: int | None = None) -> list[dict[str, Any]]:
     return _rows("SELECT * FROM blocked_dates WHERE property_id=? ORDER BY start_date", (property_id,))
 
 
+@_refresh_session_reads_after_write
 def delete_blocked_dates(block_id: int) -> None:
     if _cloud_user():
         _pg_write("DELETE FROM public.staywise_blocked_dates WHERE id=%s", (block_id,))
@@ -651,6 +716,7 @@ def delete_blocked_dates(block_id: int) -> None:
         conn.execute("DELETE FROM blocked_dates WHERE id=?", (block_id,))
 
 
+@_refresh_session_reads_after_write
 def add_comparable(item: dict[str, Any]) -> int:
     properties = get_properties()
     if not properties:
@@ -700,6 +766,7 @@ def get_comparables(property_id: int | None = None) -> list[dict[str, Any]]:
     return _rows("SELECT * FROM comparables WHERE property_id=? ORDER BY observed_date DESC, id", (property_id,))
 
 
+@_refresh_session_reads_after_write
 def set_comparable_selected(comparable_id: int, selected: bool) -> None:
     if _cloud_user():
         _pg_write("UPDATE public.staywise_comparables SET selected=%s WHERE id=%s", (bool(selected),comparable_id))
@@ -708,6 +775,7 @@ def set_comparable_selected(comparable_id: int, selected: bool) -> None:
         conn.execute("UPDATE comparables SET selected=? WHERE id=?", (int(selected), comparable_id))
 
 
+@_refresh_session_reads_after_write
 def delete_comparable(comparable_id: int) -> None:
     if _cloud_user():
         _pg_write("DELETE FROM public.staywise_comparables WHERE id=%s", (comparable_id,))
@@ -740,6 +808,7 @@ def get_settings() -> dict[str, str]:
     return settings
 
 
+@_refresh_session_reads_after_write
 def save_settings(values: dict[str, Any]) -> None:
     if _cloud_user():
         user_id = _cloud_user()
@@ -765,6 +834,7 @@ def get_monthly_assumptions() -> dict[int, dict[str, float]]:
     return {month: {"occupancy_percent": 55.0, "nightly_rate": 110.0} for month in range(1, 13)}
 
 
+@_refresh_session_reads_after_write
 def save_monthly_assumptions(values: dict[int, dict[str, float]]) -> None:
     if _cloud_user():
         user_id = _cloud_user()
