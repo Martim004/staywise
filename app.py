@@ -18,6 +18,7 @@ from staywise.calculations import date_ranges_overlap, validate_reservation
 from staywise.auth import auth_is_configured, current_user, sign_in, sign_out
 from staywise.database import (add_blocked_dates, add_comparable, add_property, add_reservation, add_reservations_batch,
                                complete_checkout_cleaning, get_checkout_cleanings, schedule_checkout_cleaning,
+                               update_checkout_cleaning, cancel_checkout_cleaning,
                                delete_blocked_dates, delete_comparable, delete_property, delete_reservation,
                                get_blocked_dates, get_comparables, get_property_workspace_data,
                                get_properties, get_reservations, get_settings, get_workspace_bootstrap,
@@ -1349,6 +1350,47 @@ elif page == "Calendar":
                 if not task["completed"] and st.button("Mark complete", key=f"complete_cleaning_{reservation_id}"):
                     complete_checkout_cleaning(active_property_id, reservation_id)
                     st.rerun()
+                if not task["completed"]:
+                    with st.expander("Edit or cancel cleaning"):
+                        new_time = st.time_input(
+                            "New cleaning time", value=time.fromisoformat(task["scheduled_time"]),
+                            step=60, key=f"edit_cleaning_time_{active_property_id}_{reservation_id}",
+                        )
+                        checkout = property_stay_time("checkout_time")
+                        checkin = property_stay_time("checkin_time")
+                        has_arrival = any(
+                            r["checkin"] == task["checkout"] and r["status"] in {"confirmed", "completed"}
+                            for r in reservations
+                        )
+                        late = checkin is not None and has_arrival and new_time >= checkin
+                        early = checkout is not None and new_time < checkout
+                        confirmed = False
+                        if late:
+                            st.error(f"Choose a cleaning time before the next check-in at {checkin:%H:%M}.")
+                        if early:
+                            st.error(f"Guests may still be in the property until {checkout:%H:%M}.")
+                            confirmed = st.checkbox(
+                                "An early check-out has been arranged.",
+                                key=f"edit_early_{active_property_id}_{reservation_id}_{new_time:%H%M}",
+                            )
+                        if st.button("Save time", key=f"save_cleaning_{reservation_id}",
+                                     disabled=late or (early and not confirmed)):
+                            try:
+                                changed = update_checkout_cleaning(
+                                    active_property_id, reservation_id, new_time, early_confirmed=confirmed,
+                                )
+                            except ValueError as exc:
+                                st.error(str(exc))
+                            else:
+                                if changed:
+                                    st.rerun()
+                                st.warning("This cleaning changed. Refresh the page.")
+                        cancel = st.checkbox("Confirm cancellation of this cleaning",
+                                             key=f"cancel_cleaning_confirm_{active_property_id}_{reservation_id}")
+                        if st.button("Cancel cleaning", key=f"cancel_cleaning_{reservation_id}", disabled=not cancel):
+                            if cancel_checkout_cleaning(active_property_id, reservation_id):
+                                st.rerun()
+                            st.warning("This cleaning changed. Refresh the page.")
 
 
 elif page == "Market":

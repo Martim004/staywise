@@ -548,6 +548,53 @@ def schedule_checkout_cleaning(property_id: int, reservation_id: int, scheduled_
             ON CONFLICT (reservation_id) DO NOTHING""", params).rowcount == 1
 
 
+def update_checkout_cleaning(
+    property_id: int, reservation_id: int, scheduled_time: time, *, early_confirmed: bool = False
+) -> bool:
+    properties = {int(item["id"]): item for item in get_properties()}
+    prop = properties.get(property_id)
+    if prop is None:
+        raise ValueError("This property is not part of your account.")
+    reservation = next((r for r in get_reservations(property_id)
+                        if r["id"] == reservation_id and r["status"] in {"confirmed", "completed"}), None)
+    if reservation is None:
+        raise ValueError("This reservation is no longer available.")
+    checkout = prop.get("checkout_time")
+    checkin = prop.get("checkin_time")
+    checkout = time.fromisoformat(checkout) if isinstance(checkout, str) else checkout
+    checkin = time.fromisoformat(checkin) if isinstance(checkin, str) else checkin
+    arrivals = get_reservations(property_id)
+    if checkin is not None and scheduled_time >= checkin and any(
+        r["checkin"] == reservation["checkout"] and r["status"] in {"confirmed", "completed"} for r in arrivals
+    ):
+        raise ValueError(f"Choose a cleaning time before the next check-in at {checkin:%H:%M}.")
+    if checkout is not None and scheduled_time < checkout and not early_confirmed:
+        raise ValueError(f"Guests may still be in the property until {checkout:%H:%M}. Confirm the early check-out.")
+    params = (scheduled_time.isoformat(timespec="minutes"), reservation_id, property_id)
+    if _cloud_user():
+        return _pg_write("""UPDATE public.staywise_checkout_cleanings SET scheduled_time=%s
+            WHERE reservation_id=%s AND completed=false AND reservation_id IN (
+                SELECT id FROM public.staywise_reservations WHERE property_id=%s)
+            RETURNING reservation_id AS id""", params, returning=True) is not None
+    with connect() as conn:
+        return conn.execute("""UPDATE checkout_cleanings SET scheduled_time=?
+            WHERE reservation_id=? AND completed=0 AND reservation_id IN (
+                SELECT id FROM reservations WHERE property_id=?)""", params).rowcount == 1
+
+
+def cancel_checkout_cleaning(property_id: int, reservation_id: int) -> bool:
+    params = (reservation_id, property_id)
+    if _cloud_user():
+        return _pg_write("""DELETE FROM public.staywise_checkout_cleanings
+            WHERE reservation_id=%s AND completed=false AND reservation_id IN (
+                SELECT id FROM public.staywise_reservations WHERE property_id=%s)
+            RETURNING reservation_id AS id""", params, returning=True) is not None
+    with connect() as conn:
+        return conn.execute("""DELETE FROM checkout_cleanings
+            WHERE reservation_id=? AND completed=0 AND reservation_id IN (
+                SELECT id FROM reservations WHERE property_id=?)""", params).rowcount == 1
+
+
 def complete_checkout_cleaning(property_id: int, reservation_id: int) -> None:
     params = (reservation_id, property_id)
     if _cloud_user():
