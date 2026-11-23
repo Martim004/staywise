@@ -47,19 +47,19 @@ python -m unittest discover -s tests
 ## Main features
 
 - Reservation records with guest details, stay dates, source, and status; CSV export and Airbnb earnings report import (XLSX or CSV).
-- A multi-property portfolio with property-specific reservations, blocked dates, comparables, map coordinates, and Airbnb / Booking.com listing links.
+- A multi-property portfolio with property-specific reservations, blocked dates, comparables, map coordinates, and Airbnb listing links.
 - Google sign-in and an account page; signed-in portfolios are stored in Supabase Postgres and separated with PostgreSQL Row Level Security (RLS).
 - Add or remove rentals from the portfolio; removing a rental also removes its linked reservations, guest contacts, blocked dates, and comparisons. Every rental can be deleted after confirmation.
 - Color-coded month calendar showing booked, blocked, and available nights.
 - Lisbon and Porto Airbnb market comparisons from the public Inside Airbnb snapshots, with a configurable radius, bedroom and capacity filters, price distribution, ratings, reviews, availability, and listing-level details.
 - An OpenStreetMap street view centered on the selected home, with clustered competitors, hover names, and listing popups that link to Airbnb pages.
-- Manual comparable records for Booking.com or other sources, since Inside Airbnb publishes Airbnb data only.
+- Manual comparable records for additional Airbnb listings, alongside the filtered Inside Airbnb snapshot.
 - Revenue views for a chosen night, a chosen month, or a selected year. Revenue is actual booked gross earnings, not a projection.
 - Revenue Excel workbook with a KPI dashboard and chart, monthly summary, daily ledger, and reservation detail.
 - Fictional demo bookings, blocked dates, comparison map pins, calendar entries, and revenue records generated whenever a user adds a property.
 - PostgreSQL snapshot storage for the current Inside Airbnb Lisbon and Porto detailed listings files. The latest snapshot for each city is retained separately; the CSV's original columns are kept in JSONB.
 
-The Inside Airbnb public snapshot is downloaded on request and cached for 24 hours. Prices are observations from that snapshot, not live booking quotes. Comparisons use straight-line distance and should be interpreted as market context, not an exact price prediction. Airbnb and Booking.com links open the owner's listing page; StayWise does not currently connect accounts or sync reservations directly. Airbnb API-connected software access and Booking.com connectivity require approved partner / property connections. Source: [Inside Airbnb data](https://insideairbnb.com/pt/get-the-data/).
+The Inside Airbnb public snapshot is downloaded on request and cached for 24 hours. Prices are observations from that snapshot, not live booking quotes. Comparisons use straight-line distance and should be interpreted as market context, not an exact price prediction. Airbnb links open the owner's listing page; StayWise does not currently connect accounts or sync reservations directly. Source: [Inside Airbnb data](https://insideairbnb.com/pt/get-the-data/).
 
 When a PostgreSQL URL is configured, **Load / refresh Airbnb comparables** saves the complete Lisbon or Porto `listings.csv.gz` snapshot matching the selected property's city to PostgreSQL before filtering it for the selected home. Calendar and review files are not imported in this feature. StayWise estimates the next database footprint with a safety margin: below 500 MiB it selects Supabase; at or above that threshold it selects Layerbase. It reports the actual PostgreSQL database size after saving. The most recent snapshot replaces the prior listing snapshot for that city to keep storage bounded.
 
