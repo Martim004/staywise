@@ -14,7 +14,7 @@ import streamlit as st
 from folium.plugins import MarkerCluster
 from streamlit_folium import st_folium
 
-from staywise.calculations import competitor_summary, date_ranges_overlap, validate_reservation
+from staywise.calculations import date_ranges_overlap, validate_reservation
 from staywise.auth import auth_is_configured, current_user, sign_in, sign_out
 from staywise.database import (add_blocked_dates, add_comparable, add_property, add_reservation, add_reservations_batch,
                                complete_checkout_cleaning, get_checkout_cleanings, schedule_checkout_cleaning,
@@ -23,7 +23,7 @@ from staywise.database import (add_blocked_dates, add_comparable, add_property, 
                                get_properties, get_reservations, get_settings, get_workspace_bootstrap,
                                init_db, is_demo_mode,
                                save_user_profile, set_authenticated_user, update_property, update_property_stay_hours,
-                               set_comparable_selected)
+                               )
 from staywise.imports import export_csv
 from staywise.inside_airbnb import LISBON_LISTINGS_URL, SOURCE_PAGE, listings_within_radius
 from staywise.postgres_store import database_urls, load_latest_snapshot, save_latest_snapshot
@@ -1043,10 +1043,9 @@ elif page == "Overview":
         ):
             confirm_house_removal()
     st.markdown('<p class="subtle">Your rental calendar and local market context in one calm workspace.</p>', unsafe_allow_html=True)
-    market = competitor_summary(comps)
     cols = st.columns(2)
     cols[0].metric("Blocked date ranges", len(blocks))
-    cols[1].metric("Manual comparable median", money(market["median_rate"]) if market["median_rate"] is not None else "—")
+    cols[1].metric("Saved comparisons", len(comps))
     st.info("Use the Calendar to see availability by day, or Market to compare nearby Lisbon or Porto Airbnb listings by radius.")
 
     with st.expander("Check-in and check-out hours"):
@@ -1542,24 +1541,17 @@ elif page == "Market":
                             "latitude":float(comp_lat) if comp_map else None,"longitude":float(comp_lon) if comp_map else None,
                             "property_id":active_property_id})
             st.success("Comparable saved."); st.rerun()
-    st.subheader("Selected price benchmark")
-    adjust = st.slider("Suggested rate adjustment", min_value=-30, max_value=30, value=0, step=1, format="%d%%")
-    market = competitor_summary(comps, adjust)
-    c1,c2,c3 = st.columns(3)
-    c1.metric("Selected listings", market["count"])
-    c2.metric("Median observed rate", money(market["median_rate"]) if market["median_rate"] is not None else "—")
-    c3.metric("Suggested rate", money(market["suggested_rate"]) if market["suggested_rate"] is not None else "—", help="Median × (1 + your selected adjustment)")
     if comps:
+        st.subheader("Saved Airbnb comparisons")
         for c in comps:
-            left,right = st.columns([7,1])
-            selected = left.checkbox(f"**{c['name']}** · {c['area']} · {c['bedrooms']} bed · {money(float(c['nightly_rate']))}/night · observed {c['observed_date']}", value=bool(c["selected"]), key=f"comp_{c['id']}", disabled=READ_ONLY)
-            if selected != bool(c["selected"]):
-                set_comparable_selected(c["id"],selected); st.rerun()
+            left, right = st.columns([7, 1])
+            left.markdown(f"**{c['name']}** · {c['area']} · {c['bedrooms']} bed · {money(float(c['nightly_rate']))}/night · observed {c['observed_date']}")
             if right.button("Delete", key=f"del_comp_{c['id']}", disabled=READ_ONLY):
                 delete_comparable(c["id"]); st.rerun()
-            if c.get("notes"): st.caption(c["notes"])
+            if c.get("notes"):
+                st.caption(c["notes"])
     else:
-        st.info("Add a few nearby homes with similar bedrooms and capacity to create a useful benchmark.")
+        st.info("Add an Airbnb listing above to keep a note of a comparable property here.")
 
 
 elif page == "Revenue":
