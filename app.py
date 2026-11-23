@@ -600,6 +600,7 @@ if not properties:
              "This public walkthrough keeps fictional details in your browser session; guest records stay disabled." if public_demo
              else "Create your first rental profile to start a private portfolio. Your data is saved in your Supabase account.")
     st.markdown(f'<p class="subtle">{intro}</p>', unsafe_allow_html=True)
+    st.caption("Create a property below, or scroll down to import an Airbnb report and create it from your listing details.")
     new_city = st.selectbox("City", list(LISTINGS_URL_BY_CITY), key="first_property_city")
     try:
         first_neighborhoods = load_city_neighborhoods(new_city)
@@ -1014,6 +1015,23 @@ if READ_ONLY:
     st.warning("Public walkthrough: property profiles stay in this browser session. Use fictional property details only. Guest records and booking edits are disabled.", icon="🔒")
 
 
+def render_booking_empty_state(title: str, description: str) -> None:
+    with st.container(border=True):
+        st.subheader(title)
+        st.write(description)
+        add_column, import_column = st.columns(2)
+        add_column.button(
+            "Add a booking", key=f"empty_add_{page}", type="primary", width="stretch",
+            on_click=st.session_state.update,
+            args=({"workspace_page": "Bookings", "_open_booking_tab": "Add booking"},),
+        )
+        import_column.button(
+            "Import Airbnb report", key=f"empty_import_{page}", width="stretch", disabled=READ_ONLY,
+            on_click=st.session_state.update,
+            args=({"workspace_page": "Bookings", "_open_booking_tab": "Import Airbnb report"},),
+        )
+
+
 if page == "Account":
     if auth_user:
         display_name = auth_user.get("name") or auth_user.get("email", "there").split("@")[0]
@@ -1155,69 +1173,75 @@ elif page == "Overview":
         task for task in property_cleanings
         if task["checkout"] == today_iso and not task["completed"]
     ]
-    st.subheader("Today")
-    st.caption(today.strftime("%d %B %Y"))
-    arrivals_panel, departures_panel, cleanings_panel = st.columns(3)
-    with arrivals_panel.container(border=True):
-        st.metric("Arrivals today", len(arrivals_today))
-        checkin = property_stay_time("checkin_time")
-        st.caption(f"Standard check-in: {checkin:%H:%M}" if checkin is not None else "Check-in time not set")
-        for reservation in arrivals_today:
-            st.text(reservation["guest_name"])
-        if not arrivals_today:
-            st.caption("No arrivals today.")
-        st.button("Open bookings", key="today_arrivals_bookings", width="stretch",
-                  on_click=st.session_state.update, args=({"workspace_page": "Bookings"},))
-    with departures_panel.container(border=True):
-        st.metric("Departures today", len(departures_today))
-        checkout = property_stay_time("checkout_time")
-        st.caption(f"Standard check-out: {checkout:%H:%M}" if checkout is not None else "Check-out time not set")
-        for reservation in departures_today:
-            st.text(reservation["guest_name"])
-        if not departures_today:
-            st.caption("No departures today.")
-        st.button("Open bookings", key="today_departures_bookings", width="stretch",
-                  on_click=st.session_state.update, args=({"workspace_page": "Bookings"},))
-    with cleanings_panel.container(border=True):
-        st.metric("Pending cleanings today", len(cleanings_today))
-        for task in cleanings_today:
-            st.text(f"{task['scheduled_time']} · Booking #{task['reservation_id']}")
-        if not cleanings_today:
-            st.caption("No pending cleanings today.")
-        st.button("Open calendar", key="today_cleanings_calendar", width="stretch",
-                  on_click=st.session_state.update,
-                  args=({"workspace_page": "Calendar", "calendar_target_date": today},))
+    if not reservations:
+        render_booking_empty_state(
+            "Your rental is ready for its first booking",
+            "Add a stay or import an Airbnb report to see arrivals, departures and cleaning reminders here.",
+        )
+    else:
+        st.subheader("Today")
+        st.caption(today.strftime("%d %B %Y"))
+        arrivals_panel, departures_panel, cleanings_panel = st.columns(3)
+        with arrivals_panel.container(border=True):
+            st.metric("Arrivals today", len(arrivals_today))
+            checkin = property_stay_time("checkin_time")
+            st.caption(f"Standard check-in: {checkin:%H:%M}" if checkin is not None else "Check-in time not set")
+            for reservation in arrivals_today:
+                st.text(reservation["guest_name"])
+            if not arrivals_today:
+                st.caption("No arrivals today.")
+            st.button("Open bookings", key="today_arrivals_bookings", width="stretch",
+                      on_click=st.session_state.update, args=({"workspace_page": "Bookings"},))
+        with departures_panel.container(border=True):
+            st.metric("Departures today", len(departures_today))
+            checkout = property_stay_time("checkout_time")
+            st.caption(f"Standard check-out: {checkout:%H:%M}" if checkout is not None else "Check-out time not set")
+            for reservation in departures_today:
+                st.text(reservation["guest_name"])
+            if not departures_today:
+                st.caption("No departures today.")
+            st.button("Open bookings", key="today_departures_bookings", width="stretch",
+                      on_click=st.session_state.update, args=({"workspace_page": "Bookings"},))
+        with cleanings_panel.container(border=True):
+            st.metric("Pending cleanings today", len(cleanings_today))
+            for task in cleanings_today:
+                st.text(f"{task['scheduled_time']} · Booking #{task['reservation_id']}")
+            if not cleanings_today:
+                st.caption("No pending cleanings today.")
+            st.button("Open calendar", key="today_cleanings_calendar", width="stretch",
+                      on_click=st.session_state.update,
+                      args=({"workspace_page": "Calendar", "calendar_target_date": today},))
 
-    cleaning_window_end = (today + timedelta(days=15)).isoformat()
-    scheduled_reservations = {task["reservation_id"] for task in property_cleanings}
-    missing_cleanings = sorted(
-        (reservation for reservation in active_stays
-         if today_iso <= reservation["checkout"] <= cleaning_window_end
-         and reservation["id"] not in scheduled_reservations),
-        key=lambda reservation: (reservation["checkout"], reservation["id"]),
-    )
-    if missing_cleanings:
-        with st.container(border=True):
-            st.subheader("Cleanings to schedule")
-            st.caption("Departures in the next 15 days · earliest first")
-            for reservation in missing_cleanings:
-                details, action = st.columns([3, 1], vertical_alignment="center")
-                checkout_date = date.fromisoformat(reservation["checkout"])
-                days_until = (checkout_date - today).days
-                timing = ("Today" if days_until == 0 else "Tomorrow" if days_until == 1
-                          else f"In {days_until} days")
-                with details:
-                    st.text(reservation["guest_name"])
-                    st.caption(f"{checkout_date:%d %b %Y} · {timing} · {active_property['name']}")
-                action.button(
-                    "Schedule cleaning",
-                    key=f"overview_schedule_cleaning_{reservation['id']}",
-                    type="primary" if days_until <= 1 else "secondary",
-                    width="stretch",
-                    on_click=st.session_state.update,
-                    args=({"workspace_page": "Bookings",
-                           f"selected_checkout_{active_property_id}": reservation["id"]},),
-                )
+        cleaning_window_end = (today + timedelta(days=15)).isoformat()
+        scheduled_reservations = {task["reservation_id"] for task in property_cleanings}
+        missing_cleanings = sorted(
+            (reservation for reservation in active_stays
+             if today_iso <= reservation["checkout"] <= cleaning_window_end
+             and reservation["id"] not in scheduled_reservations),
+            key=lambda reservation: (reservation["checkout"], reservation["id"]),
+        )
+        if missing_cleanings:
+            with st.container(border=True):
+                st.subheader("Cleanings to schedule")
+                st.caption("Departures in the next 15 days · earliest first")
+                for reservation in missing_cleanings:
+                    details, action = st.columns([3, 1], vertical_alignment="center")
+                    checkout_date = date.fromisoformat(reservation["checkout"])
+                    days_until = (checkout_date - today).days
+                    timing = ("Today" if days_until == 0 else "Tomorrow" if days_until == 1
+                              else f"In {days_until} days")
+                    with details:
+                        st.text(reservation["guest_name"])
+                        st.caption(f"{checkout_date:%d %b %Y} · {timing} · {active_property['name']}")
+                    action.button(
+                        "Schedule cleaning",
+                        key=f"overview_schedule_cleaning_{reservation['id']}",
+                        type="primary" if days_until <= 1 else "secondary",
+                        width="stretch",
+                        on_click=st.session_state.update,
+                        args=({"workspace_page": "Bookings",
+                               f"selected_checkout_{active_property_id}": reservation["id"]},),
+                    )
 
     cols = st.columns(2)
     cols[0].metric("Blocked date ranges", len(blocks))
@@ -1369,7 +1393,8 @@ elif page == "Bookings":
     else:
         st.info("No upcoming check-outs for this property.")
 
-    default_tab = "Block dates" if st.session_state.pop("_open_block_dates_tab", False) else None
+    requested_tab = st.session_state.pop("_open_booking_tab", None)
+    default_tab = "Block dates" if st.session_state.pop("_open_block_dates_tab", False) else requested_tab
     tab_add, tab_block, tab_list, tab_airbnb = st.tabs(
         ["Add booking", "Block dates", "All bookings", "Import Airbnb report"], default=default_tab,
     )
@@ -1483,7 +1508,7 @@ elif page == "Bookings":
                 st.info("No bookings match these filters. Try another name, status or date range.")
 
         else:
-            st.info("No bookings yet. Add your first booking to get started.")
+            render_booking_empty_state("No bookings yet", "Add your first stay manually or import your Airbnb earnings report.")
 
     with tab_airbnb:
         render_airbnb_report_import(properties, "bookings")
@@ -1819,6 +1844,13 @@ elif page == "Revenue":
     st.markdown('<div class="eyebrow">Recorded stay income</div>', unsafe_allow_html=True)
     st.title("Revenue")
     st.markdown('<p class="subtle">A clear view of recorded stay income, with cancelled bookings and future nights left out.</p>', unsafe_allow_html=True)
+
+    if not reservations:
+        render_booking_empty_state(
+            "Your revenue starts with your bookings",
+            "Add a booking or import an Airbnb report. Revenue will appear as nights are completed; future stays and cancelled bookings are excluded.",
+        )
+        st.stop()
 
     today = date.today()
     booking_years = [date.fromisoformat(r["checkin"]).year for r in reservations if r.get("checkin")]
