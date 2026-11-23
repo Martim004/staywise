@@ -1244,7 +1244,7 @@ elif page == "Overview":
             st.caption(f"{active_property['bedrooms']} bedrooms · {active_property['capacity']} guests")
             st.button(
                 "Edit property details", key="overview_edit_property",
-                on_click=st.session_state.update, args=({"workspace_page": "Market"},),
+                on_click=st.session_state.update, args=({"workspace_page": "Market", "_open_market_property_settings": True},),
             )
             if active_property.get("airbnb_url"):
                 st.link_button("Open Airbnb listing", active_property["airbnb_url"])
@@ -1673,56 +1673,20 @@ elif page == "Calendar":
 
 elif page == "Market":
     st.markdown('<div class="eyebrow">Know your neighborhood</div>', unsafe_allow_html=True)
-    st.title("Market & property")
-    st.markdown('<p class="subtle">Compare nearby Lisbon or Porto Airbnb listings from Inside Airbnb, filtered by your chosen radius and property size. You can also add manually observed Airbnb listings.</p>', unsafe_allow_html=True)
-    with st.expander("Property and search location", expanded=not settings.get("property_area")):
-        property_city = st.selectbox(
-            "City",
-            list(LISTINGS_URL_BY_CITY),
-            index=list(LISTINGS_URL_BY_CITY).index(city_for_area(settings.get("property_area", ""))),
-            key=f"edit_property_city_{active_property_id}",
-        )
-        current_neighborhood = neighborhood_from_area(settings.get("property_area", ""))
-        try:
-            edit_neighborhoods = load_city_neighborhoods(property_city)
-            if current_neighborhood and property_city == city_for_area(settings.get("property_area", "")) and current_neighborhood not in edit_neighborhoods:
-                edit_neighborhoods = [current_neighborhood, *edit_neighborhoods]
-            area = st.selectbox(
-                "Neighborhood",
-                edit_neighborhoods,
-                index=edit_neighborhoods.index(current_neighborhood) if current_neighborhood in edit_neighborhoods else 0,
-                key=f"edit_property_neighborhood_{active_property_id}_{property_city}",
-            )
-        except Exception:
-            st.warning("Inside Airbnb neighborhood options could not be loaded right now. You can enter the neighborhood manually.")
-            area = st.text_input(
-                "Neighborhood",
-                value=current_neighborhood if property_city == city_for_area(settings.get("property_area", "")) else "",
-                key=f"edit_property_neighborhood_manual_{active_property_id}_{property_city}",
-            )
-        with st.form("property_settings"):
-            c1,c2,c3 = st.columns(3)
-            property_name = c1.text_input("Property name", active_property["name"])
-            bedrooms = c3.number_input("Bedrooms", min_value=0, max_value=30, value=int(settings.get("bedrooms",2)))
-            c1,c2,c3 = st.columns(3)
-            capacity = c1.number_input("Guest capacity", min_value=1, max_value=100, value=int(settings.get("capacity",4)))
-            latitude = c2.number_input("Latitude", min_value=-90.0, max_value=90.0, value=float(settings.get("latitude",38.719)), format="%.6f")
-            longitude = c3.number_input("Longitude", min_value=-180.0, max_value=180.0, value=float(settings.get("longitude",-9.165)), format="%.6f")
-            airbnb_url = st.text_input("Airbnb listing URL", active_property.get("airbnb_url", ""))
-            st.caption("Choose Lisbon or Porto and set accurate coordinates for the radius search.")
-            if st.form_submit_button("Save property settings", type="primary", disabled=READ_ONLY):
-                update_property(active_property_id, {"name":property_name,"area":area_with_city(area, property_city),"bedrooms":int(bedrooms),"capacity":int(capacity),
-                               "latitude":float(latitude),"longitude":float(longitude),"airbnb_url":airbnb_url})
-                st.success("Property settings saved."); st.rerun()
-
-    st.subheader("Nearby Airbnb market · Inside Airbnb")
-    radius_km = st.slider("Search radius", min_value=0.2, max_value=10.0, value=2.0, step=0.2, format="%.1f km", key="market_search_radius_km")
-    bedrooms_only = st.checkbox("Match bedroom count", value=True)
-    capacity_match = st.checkbox("Include listings that accommodate my guest capacity", value=False)
-    airbnb_adjustment = st.slider("Suggested rate adjustment from local Airbnb median", -30, 30, 0, 1, format="%d%%", key="airbnb_adjust")
+    st.title("Market")
+    st.markdown('<p class="subtle">Compare nearby Airbnb prices with properties similar to yours.</p>', unsafe_allow_html=True)
+    st.text(f"{active_property['name']} · {active_property['area']}")
+    st.caption("Choose your search area and matching options, then compare nearby properties.")
+    radius_column, bedrooms_column, capacity_column = st.columns([2, 1, 1])
+    radius_km = radius_column.slider("Search radius", min_value=0.2, max_value=10.0, value=2.0, step=0.2, format="%.1f km", key="market_search_radius_km")
+    bedrooms_only = bedrooms_column.checkbox("Same bedroom count", value=True)
+    capacity_match = capacity_column.checkbox("Fits my guest capacity", value=False)
+    with st.expander("Rate adjustment"):
+        st.caption("Optional: adjust the median benchmark to explore a nightly rate.")
+        airbnb_adjustment = st.slider("Adjust from nearby median", -30, 30, 0, 1, format="%d%%", key="airbnb_adjust")
     market_city = city_for_area(active_property.get("area", ""))
     market_query_key = f"{active_property_id}:{market_city}"
-    load_requested = st.button("Load / refresh Airbnb comparables", type="primary")
+    load_requested = st.button("Compare nearby properties", type="primary")
     if load_requested:
         st.session_state["inside_airbnb_loaded_for"] = market_query_key
         st.session_state["inside_airbnb_refresh_requested"] = True
@@ -1742,23 +1706,26 @@ elif page == "Market":
                     int(settings.get("capacity",4)) if capacity_match else None, force_refresh,
                 )
                 st.caption(f"Source snapshot: September 2026 · {len(nearby):,} matches · distances are straight-line from your saved coordinates. Prices and availability are source data, not live quotes.")
-                if storage_info:
-                    db_mb = (storage_info.get("database_bytes") or 0) / (1024 ** 2)
-                    payload_mb = storage_info.get("payload_bytes", 0) / (1024 ** 2)
-                    st.success(f"Full {market_city} snapshot saved in {storage_info['provider']} PostgreSQL · {storage_info['listing_count']:,} listings · {payload_mb:.1f} MiB of listing data · database currently {db_mb:.1f} MiB. Only the latest snapshot is retained.")
-                elif storage_error:
-                    st.warning(f"The comparison data loaded for this session, but could not be saved to PostgreSQL: {storage_error}")
-                else:
-                    st.info("The snapshot is currently loaded in this session only. To save it permanently, add SUPABASE_DATABASE_URL to Streamlit Community Cloud Secrets; add LAYERBASE_DATABASE_URL too if the measured database would exceed 500 MiB.")
+                with st.expander("Data and storage details"):
+                    if storage_info:
+                        db_mb = (storage_info.get("database_bytes") or 0) / (1024 ** 2)
+                        payload_mb = storage_info.get("payload_bytes", 0) / (1024 ** 2)
+                        st.success(f"Full {market_city} snapshot saved in {storage_info['provider']} PostgreSQL · {storage_info['listing_count']:,} listings · {payload_mb:.1f} MiB of listing data · database currently {db_mb:.1f} MiB. Only the latest snapshot is retained.")
+                    elif storage_error:
+                        st.warning(f"The comparison data loaded for this session, but could not be saved to PostgreSQL: {storage_error}")
+                    else:
+                        st.info("The snapshot is currently loaded in this session only. To save it permanently, add SUPABASE_DATABASE_URL to Streamlit Community Cloud Secrets; add LAYERBASE_DATABASE_URL too if the measured database would exceed 500 MiB.")
                 if len(nearby):
-                    m1,m2,m3,m4,m5 = st.columns(5)
+                    m1,m2,m3 = st.columns(3)
                     m1.metric("Nearby listings", f"{len(nearby):,}")
                     m2.metric("Median nightly price", money(float(nearby["price"].median())))
-                    m3.metric("25th–75th percentile", f"{money(float(nearby['price'].quantile(.25)))}–{money(float(nearby['price'].quantile(.75)))}")
-                    rating_col = "review_scores_rating" if "review_scores_rating" in nearby else None
-                    m4.metric("Median review score", f"{nearby[rating_col].median():.1f}/5" if rating_col and nearby[rating_col].notna().any() else "—")
-                    suggested = float(nearby["price"].median()) * (1 + airbnb_adjustment / 100)
-                    m5.metric("Suggested nightly rate", money(suggested), help="Filtered Airbnb median adjusted by your chosen percentage")
+                    m3.metric("Typical nightly range", f"{money(float(nearby['price'].quantile(.25)))}–{money(float(nearby['price'].quantile(.75)))}")
+                    with st.expander("Rate guide and review scores"):
+                        m4, m5 = st.columns(2)
+                        rating_col = "review_scores_rating" if "review_scores_rating" in nearby else None
+                        m4.metric("Median review score", f"{nearby[rating_col].median():.1f}/5" if rating_col and nearby[rating_col].notna().any() else "—")
+                        suggested = float(nearby["price"].median()) * (1 + airbnb_adjustment / 100)
+                        m5.metric("Suggested nightly rate", money(suggested), help="Filtered Airbnb median adjusted by your chosen percentage")
                     st.caption("Rate guide: the nearby median is a simple benchmark. It does not account for date-specific demand, property quality, or fees.")
                     st.subheader("Nearby competition map")
                     st.caption(f"{len(nearby):,} matching Airbnb listings within {radius_km:.1f} km. The map shows up to 300 closest pins; the table and CSV cover the full result.")
@@ -1823,23 +1790,24 @@ elif page == "Market":
                     st.caption("Hover over an individual pin to see its name. Click the pin, then choose **Open Airbnb listing** in its card to visit that home.")
                     st_folium(competition_map, height=560, width=None, use_container_width=True, returned_objects=[], key=f"competition_folium_map_{active_property_id}")
                     market_map_rendered = True
-                    price_frame = nearby["price"].dropna().clip(upper=nearby["price"].quantile(.95))
-                    st.bar_chart(price_frame.value_counts(bins=12, sort=False).sort_index(), height=190, color="#1D7A78")
-                    visible = [c for c in ["name","neighbourhood_cleansed","room_type","bedrooms","accommodates","price","review_scores_rating","number_of_reviews","availability_365","distance_km","listing_url"] if c in nearby]
-                    st.caption(f"Showing the {min(300, len(nearby)):,} closest listings below; download the CSV for all {len(nearby):,} results.")
-                    st.dataframe(nearby[visible].head(300).rename(columns={"name":"Listing","neighbourhood_cleansed":"Neighborhood","room_type":"Room type","bedrooms":"Beds","accommodates":"Guests","price":"Nightly price (€)","review_scores_rating":"Rating","number_of_reviews":"Reviews","availability_365":"Available days / 365","distance_km":"Distance (km)","listing_url":"Listing URL"}).round(2), width="stretch", hide_index=True)
-                    st.download_button("Download filtered Airbnb comparables CSV", nearby[visible].to_csv(index=False).encode("utf-8"), "staywise-lisbon-airbnb-comparables.csv", "text/csv")
+                    with st.expander("Explore prices and listing details"):
+                        price_frame = nearby["price"].dropna().clip(upper=nearby["price"].quantile(.95))
+                        st.bar_chart(price_frame.value_counts(bins=12, sort=False).sort_index(), height=190, color="#1D7A78")
+                        visible = [c for c in ["name","neighbourhood_cleansed","room_type","bedrooms","accommodates","price","review_scores_rating","number_of_reviews","availability_365","distance_km","listing_url"] if c in nearby]
+                        st.caption(f"Showing the {min(300, len(nearby)):,} closest listings below; download the CSV for all {len(nearby):,} results.")
+                        st.dataframe(nearby[visible].head(300).rename(columns={"name":"Listing","neighbourhood_cleansed":"Neighborhood","room_type":"Room type","bedrooms":"Beds","accommodates":"Guests","price":"Nightly price (€)","review_scores_rating":"Rating","number_of_reviews":"Reviews","availability_365":"Available days / 365","distance_km":"Distance (km)","listing_url":"Listing URL"}).round(2), width="stretch", hide_index=True)
+                        st.download_button("Download filtered Airbnb comparables CSV", nearby[visible].to_csv(index=False).encode("utf-8"), "staywise-lisbon-airbnb-comparables.csv", "text/csv")
                 else:
                     st.info("No Airbnb listings matched this radius and property filter. Try a wider radius or turn off a size filter.")
             except Exception as exc:
                 st.error(f"Could not load the Inside Airbnb snapshot for this city: {exc}")
                 st.caption("Check the source page for current data files or try again later.")
     else:
-        st.caption("Load the public listing snapshot when you want to refresh your comparison. The demo map is available immediately.")
+        st.caption("Select Compare nearby properties to see public listing prices. The preview below uses fictional comparisons.")
 
     if not market_map_rendered:
         st.subheader("Nearby competition map")
-        st.caption("Fictional comparison pins appear immediately. Load the Inside Airbnb snapshot above for current public listings.")
+        st.caption("Fictional comparison pins appear immediately. Select Compare nearby properties above for public listing data.")
         render_fictional_market_map(
             int(active_property_id), str(active_property["name"]),
             float(settings.get("latitude", 38.719)), float(settings.get("longitude", -9.165)),
@@ -1847,34 +1815,78 @@ elif page == "Market":
         )
     market_city_label = city_for_area(active_property.get("area", ""))
     st.markdown(f"Data: [Inside Airbnb {market_city_label} listings]({SOURCE_PAGE}). This public dataset contains Airbnb listings only.")
-    st.subheader("Add a comparable listing")
-    with st.form("add_comp", clear_on_submit=True):
-        c1,c2,c3 = st.columns(3)
-        comp_name = c1.text_input("Listing label *")
-        comp_area = c2.text_input("Area")
-        observed = c3.date_input("Date observed", value=date.today())
-        c1,c2,c3,c4 = st.columns(4)
-        comp_beds = c1.number_input("Bedrooms", min_value=0, max_value=30, value=max(1,int(settings.get("bedrooms",2))))
-        comp_capacity = c2.number_input("Capacity", min_value=1, max_value=100, value=max(1,int(settings.get("capacity",4))))
-        distance = c3.number_input("Distance from your home (km)", min_value=0.0, value=0.5, step=0.1)
-        comp_rate = c4.number_input("Observed nightly rate (€)", min_value=0.0, value=140.0, step=5.0)
-        comp_map = st.checkbox("Add this comparable to the map", value=False)
-        c1,c2 = st.columns(2)
-        comp_lat = c1.number_input("Comparable latitude", min_value=-90.0, max_value=90.0, value=float(settings.get("latitude",38.719)), format="%.6f", disabled=not comp_map)
-        comp_lon = c2.number_input("Comparable longitude", min_value=-180.0, max_value=180.0, value=float(settings.get("longitude",-9.165)), format="%.6f", disabled=not comp_map)
-        url = st.text_input("Airbnb listing URL (optional)")
-        comp_notes = st.text_input("Notes: amenities, size, or other differences")
-        comp_submit = st.form_submit_button("Add comparison", type="primary", disabled=READ_ONLY)
-    if comp_submit:
-        if not comp_name.strip() or comp_rate <= 0:
-            st.error("Enter a listing label and a price above zero.")
-        else:
-            add_comparable({"name":comp_name.strip(),"area":comp_area.strip(),"bedrooms":int(comp_beds),"capacity":int(comp_capacity),
-                            "distance_km":float(distance),"nightly_rate":float(comp_rate),"observed_date":observed.isoformat(),
-                            "url":url.strip(),"notes":comp_notes,"selected":1,
-                            "latitude":float(comp_lat) if comp_map else None,"longitude":float(comp_lon) if comp_map else None,
-                            "property_id":active_property_id})
-            st.success("Comparable saved."); st.rerun()
+    with st.expander("Add a comparison manually"):
+        st.subheader("Add a comparable listing")
+        with st.form("add_comp", clear_on_submit=True):
+            c1,c2,c3 = st.columns(3)
+            comp_name = c1.text_input("Listing label *")
+            comp_area = c2.text_input("Area")
+            observed = c3.date_input("Date observed", value=date.today())
+            c1,c2,c3,c4 = st.columns(4)
+            comp_beds = c1.number_input("Bedrooms", min_value=0, max_value=30, value=max(1,int(settings.get("bedrooms",2))))
+            comp_capacity = c2.number_input("Capacity", min_value=1, max_value=100, value=max(1,int(settings.get("capacity",4))))
+            distance = c3.number_input("Distance from your home (km)", min_value=0.0, value=0.5, step=0.1)
+            comp_rate = c4.number_input("Observed nightly rate (€)", min_value=0.0, value=140.0, step=5.0)
+            comp_map = st.checkbox("Add this comparable to the map", value=False)
+            c1,c2 = st.columns(2)
+            comp_lat = c1.number_input("Comparable latitude", min_value=-90.0, max_value=90.0, value=float(settings.get("latitude",38.719)), format="%.6f", disabled=not comp_map)
+            comp_lon = c2.number_input("Comparable longitude", min_value=-180.0, max_value=180.0, value=float(settings.get("longitude",-9.165)), format="%.6f", disabled=not comp_map)
+            url = st.text_input("Airbnb listing URL (optional)")
+            comp_notes = st.text_input("Notes: amenities, size, or other differences")
+            comp_submit = st.form_submit_button("Add comparison", type="primary", disabled=READ_ONLY)
+        if comp_submit:
+            if not comp_name.strip() or comp_rate <= 0:
+                st.error("Enter a listing label and a price above zero.")
+            else:
+                add_comparable({"name":comp_name.strip(),"area":comp_area.strip(),"bedrooms":int(comp_beds),"capacity":int(comp_capacity),
+                                "distance_km":float(distance),"nightly_rate":float(comp_rate),"observed_date":observed.isoformat(),
+                                "url":url.strip(),"notes":comp_notes,"selected":1,
+                                "latitude":float(comp_lat) if comp_map else None,"longitude":float(comp_lon) if comp_map else None,
+                                "property_id":active_property_id})
+                st.success("Comparable saved."); st.rerun()
+
+
+
+
+    with st.expander("Property and search location", expanded=st.session_state.pop("_open_market_property_settings", False) or not settings.get("property_area")):
+        property_city = st.selectbox(
+            "City",
+            list(LISTINGS_URL_BY_CITY),
+            index=list(LISTINGS_URL_BY_CITY).index(city_for_area(settings.get("property_area", ""))),
+            key=f"edit_property_city_{active_property_id}",
+        )
+        current_neighborhood = neighborhood_from_area(settings.get("property_area", ""))
+        try:
+            edit_neighborhoods = load_city_neighborhoods(property_city)
+            if current_neighborhood and property_city == city_for_area(settings.get("property_area", "")) and current_neighborhood not in edit_neighborhoods:
+                edit_neighborhoods = [current_neighborhood, *edit_neighborhoods]
+            area = st.selectbox(
+                "Neighborhood",
+                edit_neighborhoods,
+                index=edit_neighborhoods.index(current_neighborhood) if current_neighborhood in edit_neighborhoods else 0,
+                key=f"edit_property_neighborhood_{active_property_id}_{property_city}",
+            )
+        except Exception:
+            st.warning("Inside Airbnb neighborhood options could not be loaded right now. You can enter the neighborhood manually.")
+            area = st.text_input(
+                "Neighborhood",
+                value=current_neighborhood if property_city == city_for_area(settings.get("property_area", "")) else "",
+                key=f"edit_property_neighborhood_manual_{active_property_id}_{property_city}",
+            )
+        with st.form("property_settings"):
+            c1,c2,c3 = st.columns(3)
+            property_name = c1.text_input("Property name", active_property["name"])
+            bedrooms = c3.number_input("Bedrooms", min_value=0, max_value=30, value=int(settings.get("bedrooms",2)))
+            c1,c2,c3 = st.columns(3)
+            capacity = c1.number_input("Guest capacity", min_value=1, max_value=100, value=int(settings.get("capacity",4)))
+            latitude = c2.number_input("Latitude", min_value=-90.0, max_value=90.0, value=float(settings.get("latitude",38.719)), format="%.6f")
+            longitude = c3.number_input("Longitude", min_value=-180.0, max_value=180.0, value=float(settings.get("longitude",-9.165)), format="%.6f")
+            airbnb_url = st.text_input("Airbnb listing URL", active_property.get("airbnb_url", ""))
+            st.caption("Choose Lisbon or Porto and set accurate coordinates for the radius search.")
+            if st.form_submit_button("Save property settings", type="primary", disabled=READ_ONLY):
+                update_property(active_property_id, {"name":property_name,"area":area_with_city(area, property_city),"bedrooms":int(bedrooms),"capacity":int(capacity),
+                               "latitude":float(latitude),"longitude":float(longitude),"airbnb_url":airbnb_url})
+                st.success("Property settings saved."); st.rerun()
 
 
 
