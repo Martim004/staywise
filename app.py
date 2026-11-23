@@ -483,11 +483,83 @@ if not local_development and not auth_configured:
     st.error("Google sign-in is not configured, so rental information is locked.")
     st.stop()
 if not auth_user and not local_development:
-    st.markdown('<div class="brand">StayWise<span>.</span></div>', unsafe_allow_html=True)
-    st.title("Welcome to StayWise")
-    st.write("Sign in with Google to create your private rental portfolio.")
-    if st.button("Continue with Google", type="primary"):
-        sign_in()
+    st.markdown("""
+<style>
+[data-testid="stMainBlockContainer"] {max-width:1320px;padding-top:2.5rem;padding-bottom:3rem;}
+.login-brand {font-family:Manrope,sans-serif;font-size:28px;font-weight:800;letter-spacing:-1.2px;color:#17324d;margin-bottom:64px;}
+.login-brand span {color:#1d7a78;}
+.login-headline {font-family:Manrope,sans-serif;font-size:clamp(42px,5vw,70px)!important;font-weight:800;line-height:1.06;letter-spacing:-3px;color:#17324d;margin:0 0 24px!important;}
+.login-headline em {font-style:normal;color:#1d7a78;}
+.login-copy {font-size:18px;line-height:1.7;color:#526676;max-width:440px;margin:0 0 28px;}
+.login-private {font-size:13px;color:#526676;margin:12px 0 32px;line-height:1.6;}
+.login-features {display:flex;flex-wrap:wrap;gap:10px 20px;font-size:13px;color:#315f55;margin-top:12px;}
+.login-features span {border-bottom:1px solid #cbded8;padding-bottom:6px;}
+.st-key-login_cta button {min-height:52px;border-radius:12px;font-size:16px;font-weight:650;}
+.login-scene {background:linear-gradient(140deg,#17324d,#145f5d);border-radius:28px;padding:28px;box-shadow:0 24px 60px #17324d1a;transform:rotate(-1deg);margin:10px 8px 30px;}
+.login-scene-head {display:flex;justify-content:space-between;gap:10px;color:#fff;font-size:13px;margin:0 0 22px;}
+.login-scene-head strong {font-size:17px;}
+.login-window {background:#f6f8f8;border-radius:18px;padding:24px;color:#17324d;}
+.login-window-head {font-size:20px;font-weight:750;margin-bottom:18px;}
+.login-week {display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;}
+.login-weekday {font-size:10px;text-align:center;color:#526676;padding-bottom:7px;}
+.login-date {border-radius:7px;min-height:43px;padding:6px;background:#f2faf6;color:#216c4c;border:1px solid #d5eee1;font-size:12px;}
+.login-date.reserved {background:#f1f5ff;color:#3d58a4;border-color:#dbe4ff;}
+.login-date.unavailable {background:#fff7ed;color:#9a571a;border-color:#ffdfbd;}
+.login-legend {display:flex;flex-wrap:wrap;gap:12px;font-size:10px;color:#526676;margin:14px 0 20px;}
+.login-task {background:white;border:1px solid #e2e9eb;border-radius:10px;padding:13px;display:flex;gap:14px;align-items:center;font-size:13px;}
+.login-task-time {font-weight:750;color:#1d7a78;}
+.login-task small {display:block;color:#526676;}
+.login-preview-note {text-align:center;font-size:11px;color:#526676;margin:12px 0 0;}
+.login-footer {border-top:1px solid #e2e9eb;color:#526676;font-size:13px;padding-top:20px;margin-top:56px;}
+@media(max-width:760px) {
+.login-brand {margin-bottom:32px;}
+.login-headline {letter-spacing:-1.8px;}
+.login-scene {transform:none;margin:18px 0;padding:18px;}
+.login-window {padding:16px;}
+}
+</style>
+<div class="login-brand">StayWise<span>.</span></div>
+""", unsafe_allow_html=True)
+    intro, preview = st.columns([1, 1.12], gap="large", vertical_alignment="center")
+    with intro:
+        st.markdown(
+            '<h1 class="login-headline">Your rental.<br>Your rhythm.<br><em>All in one place.</em></h1>'
+            '<p class="login-copy">Bring bookings, cleaning schedules and Airbnb market insights '
+            'into one clear workspace.</p>', unsafe_allow_html=True,
+        )
+        with st.container(key="login_cta"):
+            if st.button("Continue with Google", type="primary", width="stretch"):
+                sign_in()
+        st.markdown(
+            '<p class="login-private">Sign in to create your private rental portfolio. '
+            'Google handles your sign-in.</p>'
+            '<div class="login-features"><span>Bookings &amp; availability</span>'
+            '<span>Cleaning schedules</span><span>Revenue &amp; market insights</span></div>',
+            unsafe_allow_html=True,
+        )
+    with preview:
+        weekdays = "".join(f'<span class="login-weekday">{day}</span>'
+                           for day in ["M", "T", "W", "T", "F", "S", "S"])
+        days = "".join(
+            f'<div class="login-date {"reserved" if day in {3,4,5,10,11,12,17,18,19} else "unavailable" if day in {24,25} else ""}">{day}</div>'
+            for day in range(1, 29)
+        )
+        st.markdown(
+            '<div class="login-scene" aria-label="Illustrative rental calendar">'
+            '<div class="login-scene-head"><strong>A clearer day ahead.</strong><span>StayWise</span></div>'
+            '<div class="login-window"><div class="login-window-head">Your rental calendar</div>'
+            f'<div class="login-week">{weekdays}{days}</div>'
+            '<div class="login-legend"><span>Available · green</span><span>Booked · blue</span>'
+            '<span>Blocked · orange</span></div>'
+            '<div class="login-task"><span class="login-task-time">12:30</span>'
+            '<div>Cleaning scheduled<small>Ready for the next arrival.</small></div></div>'
+            '</div></div><p class="login-preview-note">Illustrative preview · fictional data</p>',
+            unsafe_allow_html=True,
+        )
+    st.markdown(
+        '<div class="login-footer">Built for short-stay rental owners in Lisbon and Porto.</div>',
+        unsafe_allow_html=True,
+    )
     st.stop()
 
 set_authenticated_user(auth_user["id"] if auth_user else None)
