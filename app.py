@@ -1127,9 +1127,7 @@ if page == "Account":
 
 elif page == "Overview":
     st.markdown('<div class="eyebrow">Your rental at a glance</div>', unsafe_allow_html=True)
-    title_column, action_column = st.columns([5, 1], vertical_alignment="center")
-    with title_column:
-        st.title(f"{settings.get('property_name','My Rental')} overview")
+    st.title(f"{settings.get('property_name','My Rental')} overview")
 
     @st.dialog("Confirm house removal")
     def confirm_house_removal():
@@ -1153,15 +1151,6 @@ elif page == "Overview":
             st.session_state.pop("inside_airbnb_loaded_for", None)
             st.rerun()
 
-    with action_column:
-        if st.button(
-            "Remove house",
-            icon=":material/delete_outline:",
-            type="secondary",
-            width="content",
-            key="remove_property_overview",
-        ):
-            confirm_house_removal()
     st.markdown('<p class="subtle">Your rental calendar and local market context in one calm workspace.</p>', unsafe_allow_html=True)
     today = date.today()
     today_iso = today.isoformat()
@@ -1246,54 +1235,72 @@ elif page == "Overview":
     cols = st.columns(2)
     cols[0].metric("Blocked date ranges", len(blocks))
     cols[1].metric("Saved comparisons", len(comps))
-    st.info("Use the Calendar to see availability by day, or Market to compare nearby Lisbon or Porto Airbnb listings by radius.")
 
-    with st.expander("Check-in and check-out hours"):
-        st.caption("Set the usual local hours for this property. Select which hours to save.")
-        with st.form(f"property_stay_hours_{active_property_id}"):
-            checkin_column, checkout_column = st.columns(2)
-            saved_checkin = property_stay_time("checkin_time")
-            saved_checkout = property_stay_time("checkout_time")
-            use_checkin = checkin_column.checkbox("Set check-in time", value=saved_checkin is not None)
-            checkin_time = checkin_column.time_input("Check-in time", value=saved_checkin or time(17), step=60)
-            use_checkout = checkout_column.checkbox("Set check-out time", value=saved_checkout is not None)
-            checkout_time = checkout_column.time_input("Check-out time", value=saved_checkout or time(12), step=60)
-            if st.form_submit_button("Save stay hours"):
-                update_property_stay_hours(
-                    active_property_id, checkin_time if use_checkin else None, checkout_time if use_checkout else None,
-                )
-                st.rerun()
-    with st.expander("Manage your rental portfolio"):
-        st.caption("Save each home separately, then switch between them from the property selector. New homes get fictional bookings, blocked dates, and comparison pins for demonstration.")
-        new_city = st.selectbox("City for the new rental", list(LISTINGS_URL_BY_CITY), key="add_property_city")
-        try:
-            add_neighborhoods = load_city_neighborhoods(new_city)
-            add_area = st.selectbox("Neighborhood", add_neighborhoods, key=f"add_property_neighborhood_{new_city}")
-        except Exception:
-            st.warning("Inside Airbnb neighborhood options could not be loaded right now. You can enter the neighborhood manually.")
-            add_area = st.text_input("Neighborhood", key=f"add_property_neighborhood_manual_{new_city}")
-        with st.form("add_property", clear_on_submit=True):
-            p1,p2,p3 = st.columns(3)
-            new_name = p1.text_input("Property name *")
-            new_bedrooms = p3.number_input("Bedrooms", min_value=0, max_value=30, value=2, key="new_property_bedrooms")
-            new_capacity = st.number_input("Guest capacity", min_value=1, max_value=100, value=4, key="new_property_capacity")
-            st.caption("The map uses an approximate city location. You can refine the map pin later in property settings.")
-            new_airbnb = st.text_input("Airbnb listing URL")
-            if st.form_submit_button("Add property", type="primary"):
-                if not new_name.strip():
-                    st.error("Enter a name for this property.")
-                else:
-                    new_lat, new_lon = (41.1579, -8.6291) if new_city == "Porto" else (38.719, -9.165)
-                    new_area = area_with_city(add_area, new_city)
-                    new_id = add_property({"name":new_name.strip(),"area":new_area,"bedrooms":int(new_bedrooms),
-                        "capacity":int(new_capacity),"latitude":new_lat,"longitude":new_lon,
-                        "airbnb_url":new_airbnb.strip()})
-                    seed_fictional_property(new_id, new_city, int(new_bedrooms), int(new_capacity), float(new_lat), float(new_lon))
-                    st.session_state["pending_property_id"] = new_id
+    with st.expander("Property settings", icon=":material/settings:"):
+        details_tab, hours_tab, portfolio_tab = st.tabs(["This property", "Stay hours", "Add property"])
+        with details_tab:
+            st.text(active_property["name"])
+            st.text(active_property["area"])
+            st.caption(f"{active_property['bedrooms']} bedrooms · {active_property['capacity']} guests")
+            st.button(
+                "Edit property details", key="overview_edit_property",
+                on_click=st.session_state.update, args=({"workspace_page": "Market"},),
+            )
+            if active_property.get("airbnb_url"):
+                st.link_button("Open Airbnb listing", active_property["airbnb_url"])
+            st.divider()
+            if st.button(
+                "Remove house",
+                icon=":material/delete_outline:",
+                type="secondary",
+                width="content",
+                key="remove_property_overview",
+            ):
+                confirm_house_removal()
+        with hours_tab:
+            st.caption("Set the usual local hours for this property. Select which hours to save.")
+            with st.form(f"property_stay_hours_{active_property_id}"):
+                checkin_column, checkout_column = st.columns(2)
+                saved_checkin = property_stay_time("checkin_time")
+                saved_checkout = property_stay_time("checkout_time")
+                use_checkin = checkin_column.checkbox("Set check-in time", value=saved_checkin is not None)
+                checkin_time = checkin_column.time_input("Check-in time", value=saved_checkin or time(17), step=60)
+                use_checkout = checkout_column.checkbox("Set check-out time", value=saved_checkout is not None)
+                checkout_time = checkout_column.time_input("Check-out time", value=saved_checkout or time(12), step=60)
+                if st.form_submit_button("Save stay hours"):
+                    update_property_stay_hours(
+                        active_property_id, checkin_time if use_checkin else None, checkout_time if use_checkout else None,
+                    )
                     st.rerun()
-        st.divider()
-    if active_property.get("airbnb_url"):
-        st.link_button("Open Airbnb listing", active_property["airbnb_url"])
+        with portfolio_tab:
+            st.caption("Save each home separately, then switch between them from the property selector. New homes get fictional bookings, blocked dates, and comparison pins for demonstration.")
+            new_city = st.selectbox("City for the new rental", list(LISTINGS_URL_BY_CITY), key="add_property_city")
+            try:
+                add_neighborhoods = load_city_neighborhoods(new_city)
+                add_area = st.selectbox("Neighborhood", add_neighborhoods, key=f"add_property_neighborhood_{new_city}")
+            except Exception:
+                st.warning("Inside Airbnb neighborhood options could not be loaded right now. You can enter the neighborhood manually.")
+                add_area = st.text_input("Neighborhood", key=f"add_property_neighborhood_manual_{new_city}")
+            with st.form("add_property", clear_on_submit=True):
+                p1,p2,p3 = st.columns(3)
+                new_name = p1.text_input("Property name *")
+                new_bedrooms = p3.number_input("Bedrooms", min_value=0, max_value=30, value=2, key="new_property_bedrooms")
+                new_capacity = st.number_input("Guest capacity", min_value=1, max_value=100, value=4, key="new_property_capacity")
+                st.caption("The map uses an approximate city location. You can refine the map pin later in property settings.")
+                new_airbnb = st.text_input("Airbnb listing URL")
+                if st.form_submit_button("Add property", type="primary"):
+                    if not new_name.strip():
+                        st.error("Enter a name for this property.")
+                    else:
+                        new_lat, new_lon = (41.1579, -8.6291) if new_city == "Porto" else (38.719, -9.165)
+                        new_area = area_with_city(add_area, new_city)
+                        new_id = add_property({"name":new_name.strip(),"area":new_area,"bedrooms":int(new_bedrooms),
+                            "capacity":int(new_capacity),"latitude":new_lat,"longitude":new_lon,
+                            "airbnb_url":new_airbnb.strip()})
+                        seed_fictional_property(new_id, new_city, int(new_bedrooms), int(new_capacity), float(new_lat), float(new_lon))
+                        st.session_state["pending_property_id"] = new_id
+                        st.rerun()
+            st.divider()
 
 
 elif page == "Bookings":
