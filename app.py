@@ -1541,17 +1541,7 @@ elif page == "Market":
                             "latitude":float(comp_lat) if comp_map else None,"longitude":float(comp_lon) if comp_map else None,
                             "property_id":active_property_id})
             st.success("Comparable saved."); st.rerun()
-    if comps:
-        st.subheader("Saved Airbnb comparisons")
-        for c in comps:
-            left, right = st.columns([7, 1])
-            left.markdown(f"**{c['name']}** · {c['area']} · {c['bedrooms']} bed · {money(float(c['nightly_rate']))}/night · observed {c['observed_date']}")
-            if right.button("Delete", key=f"del_comp_{c['id']}", disabled=READ_ONLY):
-                delete_comparable(c["id"]); st.rerun()
-            if c.get("notes"):
-                st.caption(c["notes"])
-    else:
-        st.info("Add an Airbnb listing above to keep a note of a comparable property here.")
+
 
 
 elif page == "Revenue":
