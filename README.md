@@ -2,7 +2,7 @@
 
 StayWise helps a short-term rental owner manage multiple homes and their stays, compare nearby Lisbon or Porto Airbnb listings, view competitors on a map, and track recorded nightly revenue.
 
-> **Course-project note:** the linked team-project guidance asks teams to extend a member's solo project. StayWise is intentionally standalone while an exception is requested. Confirm the exception before presenting this repository as a course-compliant submission.
+> **Course-project note:** the linked team-project guidance asks teams to extend a member's solo project. StayWise is a standalone project; the team received instructor approval for this exception.
 
 ## Sign-in demo and team
 
@@ -44,6 +44,8 @@ The local app stores data in `data/staywise.sqlite3`. That directory is excluded
 python -m unittest discover -s tests
 ```
 
+The interface tests use a temporary local SQLite workspace with fictional records and assert that the actual pages render. They also verify calendar navigation, empty states, and that deployment without configured sign-in stops before loading rental data. They do not replace live verification of Google OIDC and Supabase RLS.
+
 ## Main features
 
 - Reservation records with guest details, stay dates, source, and status; CSV export and Airbnb earnings report import (XLSX or CSV).
@@ -51,6 +53,8 @@ python -m unittest discover -s tests
 - Google sign-in and an account page; signed-in portfolios are stored in Supabase Postgres and separated with PostgreSQL Row Level Security (RLS).
 - Add or remove rentals from the portfolio; removing a rental also removes its linked reservations, guest contacts, blocked dates, and comparisons. Every rental can be deleted after confirmation.
 - Color-coded month calendar showing booked, blocked, and available nights.
+- Checkout cleaning scheduling, editing and cancellation, property stay hours, and reminders for departures in the next 15 days.
+- Booking search and status/date filters; project-only help with a confirmed block-dates action.
 - Lisbon and Porto Airbnb market comparisons from the public Inside Airbnb snapshots, with a configurable radius, bedroom and capacity filters, price distribution, ratings, reviews, availability, and listing-level details.
 - An OpenStreetMap street view centered on the selected home, with clustered competitors, hover names, and listing popups that link to Airbnb pages.
 - Manual comparable records for additional Airbnb listings, alongside the filtered Inside Airbnb snapshot.
@@ -61,7 +65,7 @@ python -m unittest discover -s tests
 
 The Inside Airbnb public snapshot is downloaded on request and cached for 24 hours. Prices are observations from that snapshot, not live booking quotes. Comparisons use straight-line distance and should be interpreted as market context, not an exact price prediction. Airbnb links open the owner's listing page; StayWise does not currently connect accounts or sync reservations directly. Source: [Inside Airbnb data](https://insideairbnb.com/pt/get-the-data/).
 
-When a PostgreSQL URL is configured, **Load / refresh Airbnb comparables** saves the complete Lisbon or Porto `listings.csv.gz` snapshot matching the selected property's city to PostgreSQL before filtering it for the selected home. Calendar and review files are not imported in this feature. StayWise estimates the next database footprint with a safety margin: below 500 MiB it selects Supabase; at or above that threshold it selects Layerbase. It reports the actual PostgreSQL database size after saving. The most recent snapshot replaces the prior listing snapshot for that city to keep storage bounded.
+When a PostgreSQL URL is configured, **Compare nearby properties** saves the complete Lisbon or Porto `listings.csv.gz` snapshot matching the selected property's city to PostgreSQL before filtering it for the selected home. Calendar and review files are not imported in this feature. StayWise estimates the next database footprint with a safety margin: below 500 MiB it selects Supabase; at or above that threshold it selects Layerbase. It reports the actual PostgreSQL database size after saving. The most recent snapshot replaces the prior listing snapshot for that city to keep storage bounded.
 
 For the Streamlit Cloud app, add database connection strings under **Manage app → Settings → Secrets**. Supply a Supabase connection URL, and a Layerbase URL as the size fallback:
 
