@@ -389,6 +389,20 @@ def render_airbnb_report_import(existing_properties: list[dict], key_prefix: str
         if new_property:
             if not str(p_name or "").strip() or not str(neighborhood or "").strip():
                 raise ValueError("Enter a property name and neighborhood.")
+            normalized_name = str(p_name).strip().casefold()
+            current_properties = get_properties()
+            matching_property = next(
+                (item for item in current_properties
+                 if str(item.get("name", "")).strip().casefold() in {
+                     normalized_name, report["listing_name"].strip().casefold(),
+                 }),
+                None,
+            )
+            if matching_property is not None:
+                raise ValueError(
+                    "This property already exists. In 'Import into', select the existing "
+                    "property instead of 'Create a new property'. Already imported confirmation codes will be skipped."
+                )
             latitude, longitude = (41.1579, -8.6291) if city == "Porto" else (38.719, -9.165)
             property_id = add_property({
                 "name": str(p_name).strip(),
