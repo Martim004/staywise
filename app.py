@@ -1423,11 +1423,65 @@ elif page == "Bookings":
     with tab_list:
         if reservations:
             st.download_button("Export bookings CSV", export_csv(reservations), "staywise-bookings.csv", "text/csv")
-            table = pd.DataFrame(reservations)
-            st.dataframe(table[["id","guest_name","email","phone","checkin","checkout","guests","nightly_rate","status","source","notes"]], width="stretch", hide_index=True)
-            delete_id = st.selectbox("Delete booking", [r["id"] for r in reservations], format_func=lambda rid: next(f"#{r['id']} · {r['guest_name']} · {r['checkin']}" for r in reservations if r["id"]==rid))
-            if st.button("Delete selected booking", type="secondary", disabled=READ_ONLY):
-                delete_reservation(delete_id); st.rerun()
+            search_column, status_column = st.columns([2, 1])
+            query = search_column.text_input("Search guest", placeholder="Guest name",
+                                             key=f"booking_search_{active_property_id}").strip().casefold()
+            status_filter = status_column.selectbox(
+                "Booking status", ["All statuses", "confirmed", "completed", "cancelled"],
+                key=f"booking_status_filter_{active_property_id}",
+            )
+            use_dates = st.checkbox("Filter by stay dates", key=f"booking_use_dates_{active_property_id}")
+            date_start = date_end = None
+            if use_dates:
+                start_column, end_column = st.columns(2)
+                date_start = start_column.date_input("From", key=f"booking_filter_start_{active_property_id}")
+                date_end = end_column.date_input("Through", key=f"booking_filter_end_{active_property_id}")
+            invalid_dates = use_dates and date_end < date_start
+            if invalid_dates:
+                st.error("Choose an end date on or after the start date.")
+            filtered = sorted(
+                (r for r in reservations
+                 if query in str(r["guest_name"]).casefold()
+                 and (status_filter == "All statuses" or r["status"] == status_filter)
+                 and not invalid_dates
+                 and (not use_dates or (r["checkin"] <= date_end.isoformat()
+                                        and r["checkout"] > date_start.isoformat()))),
+                key=lambda r: (r["checkin"], r["id"]),
+            )
+            st.caption(f"{len(filtered)} of {len(reservations)} bookings · CSV export includes all bookings")
+            if filtered:
+                table = pd.DataFrame(filtered)
+                st.dataframe(table[["guest_name", "checkin", "checkout", "guests", "status", "source"]],
+                             width="stretch", hide_index=True)
+                selected_id = st.selectbox(
+                    "Booking details", [r["id"] for r in filtered],
+                    format_func=lambda rid: next(
+                        f"#{r['id']} · {r['guest_name']} · {r['checkin']} → {r['checkout']}"
+                        for r in filtered if r["id"] == rid),
+                    key=f"booking_details_{active_property_id}",
+                )
+                selected = next(r for r in filtered if r["id"] == selected_id)
+                with st.container(border=True):
+                    st.text(selected["guest_name"])
+                    st.text(f"{selected['checkin']} → {selected['checkout']} · {selected['status']}")
+                    st.text(f"{selected['guests']} guests · €{selected['nightly_rate']:.2f} per night · {selected['source']}")
+                    if selected.get("email"):
+                        st.text(f"Email: {selected['email']}")
+                    if selected.get("phone"):
+                        st.text(f"Phone: {selected['phone']}")
+                    if selected.get("notes"):
+                        st.text(f"Notes: {selected['notes']}")
+                    confirm_delete = st.checkbox(
+                        "Permanently delete this booking and its cleaning task",
+                        key=f"confirm_delete_booking_{active_property_id}_{selected_id}", disabled=READ_ONLY,
+                    )
+                    if st.button("Delete selected booking", type="secondary",
+                                 disabled=READ_ONLY or not confirm_delete):
+                        delete_reservation(selected_id)
+                        st.rerun()
+            elif not invalid_dates:
+                st.info("No bookings match these filters. Try another name, status or date range.")
+
         else:
             st.info("No bookings yet. Add your first booking to get started.")
 
