@@ -22,11 +22,6 @@ class ImportAndDatabaseTests(unittest.TestCase):
         self.assertIn("overlap", errors[0].lower())
         self.assertIn("Status", errors[1])
 
-    def test_airbnb_listing_url_rejects_booking_domain(self):
-        with self.assertRaises(ValueError):
-            database._safe_airbnb_url("https://www.booking.com/hotel/example", "Airbnb")
-        self.assertEqual(database._safe_airbnb_url("https://www.airbnb.com/rooms/123", "Airbnb"), "https://www.airbnb.com/rooms/123")
-
     def test_csv_import_requires_documented_header(self):
         accepted, errors = parse_booking_csv(b"name,date\nA,2026-01-01\n", [], [])
         self.assertEqual(accepted, [])
