@@ -7,9 +7,8 @@ alter table public.staywise_properties
   add constraint staywise_properties_capacity_range check (capacity between 1 and 100) not valid,
   add constraint staywise_properties_coordinates check (latitude between -90 and 90 and longitude between -180 and 180) not valid,
   add constraint staywise_properties_urls check (
-    length(airbnb_url) <= 2048 and length(booking_url) <= 2048 and
-    (airbnb_url = '' or airbnb_url ~ '^https://') and
-    (booking_url = '' or booking_url ~ '^https://')
+    length(airbnb_url) <= 2048 and
+    (airbnb_url = '' or airbnb_url ~ '^https://')
   ) not valid;
 
 alter table public.staywise_reservations
