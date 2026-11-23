@@ -1197,26 +1197,27 @@ elif page == "Overview":
         key=lambda reservation: (reservation["checkout"], reservation["id"]),
     )
     if missing_cleanings:
-        count = len(missing_cleanings)
-        message = ("1 departure in the next 15 days needs a cleaning."
-                   if count == 1 else f"{count} departures in the next 15 days need cleanings.")
-        st.warning(message, icon=":material/cleaning_services:")
-        with st.expander("View departures needing a cleaning"):
+        with st.container(border=True):
+            st.subheader("Cleanings to schedule")
+            st.caption("Departures in the next 15 days · earliest first")
             for reservation in missing_cleanings:
-                st.text(f"{reservation['checkout']} · {reservation['guest_name']}")
-                st.button(
+                details, action = st.columns([3, 1], vertical_alignment="center")
+                checkout_date = date.fromisoformat(reservation["checkout"])
+                days_until = (checkout_date - today).days
+                timing = ("Today" if days_until == 0 else "Tomorrow" if days_until == 1
+                          else f"In {days_until} days")
+                with details:
+                    st.text(reservation["guest_name"])
+                    st.caption(f"{checkout_date:%d %b %Y} · {timing} · {active_property['name']}")
+                action.button(
                     "Schedule cleaning",
                     key=f"overview_schedule_cleaning_{reservation['id']}",
+                    type="primary" if days_until <= 1 else "secondary",
+                    width="stretch",
                     on_click=st.session_state.update,
                     args=({"workspace_page": "Bookings",
                            f"selected_checkout_{active_property_id}": reservation["id"]},),
                 )
-        st.button(
-            "Schedule cleaning", key="overview_missing_cleaning",
-            on_click=st.session_state.update,
-            args=({"workspace_page": "Bookings",
-                   f"selected_checkout_{active_property_id}": missing_cleanings[0]["id"]},),
-        )
 
     cols = st.columns(2)
     cols[0].metric("Blocked date ranges", len(blocks))
