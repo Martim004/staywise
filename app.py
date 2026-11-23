@@ -1518,7 +1518,11 @@ elif page == "Calendar":
     st.markdown('<div class="eyebrow">Availability at a glance</div>', unsafe_allow_html=True)
     st.title("Calendar")
     now = date.today()
-    target_date = st.session_state.pop("calendar_target_date", now)
+    requested_date = st.session_state.pop("calendar_target_date", None)
+    target_date = requested_date or now
+    if requested_date is not None:
+        st.session_state["calendar_month"] = requested_date.month
+        st.session_state["calendar_year"] = requested_date.year
     calendar_panel, tasks_panel = st.columns([3, 1], gap="medium")
     with calendar_panel.container(border=True):
         c1, c2 = st.columns(2)
@@ -1528,6 +1532,25 @@ elif page == "Calendar":
         selected_year = st.session_state.get("calendar_year", target_date.year)
         years = sorted({*default_years, selected_year, target_date.year})
         year = c2.selectbox("Year", years, index=years.index(target_date.year), key="calendar_year")
+        previous_column, today_column, next_column = st.columns([1, 1, 1])
+        previous_year, previous_month_index = divmod(year * 12 + month - 2, 12)
+        next_year, next_month_index = divmod(year * 12 + month, 12)
+        previous_column.button(
+            "Previous month", icon=":material/chevron_left:", width="stretch",
+            key="calendar_previous", disabled=year == 1 and month == 1,
+            on_click=st.session_state.update,
+            args=({"calendar_target_date": date(max(1, previous_year), previous_month_index + 1, 1)},),
+        )
+        today_column.button(
+            "Today", icon=":material/today:", width="stretch", key="calendar_today",
+            on_click=st.session_state.update, args=({"calendar_target_date": now},),
+        )
+        next_column.button(
+            "Next month", icon=":material/chevron_right:", width="stretch",
+            key="calendar_next", disabled=year == 9999 and month == 12,
+            on_click=st.session_state.update,
+            args=({"calendar_target_date": date(min(9999, next_year), next_month_index + 1, 1)},),
+        )
         st.markdown("<div class='legend'><span><i class='dot available'></i>Available</span>"
                     "<span><i class='dot booked'></i>Booked</span>"
                     "<span><i class='dot blocked'></i>Blocked</span></div>", unsafe_allow_html=True)
