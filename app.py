@@ -1613,17 +1613,22 @@ elif page == "Calendar":
         st.subheader("Cleaning tasks")
         if not cleanings_by_date:
             st.info("No cleanings scheduled for this month.")
+        bookings_by_id = {r["id"]: r for r in reservations}
         for day_tasks in cleanings_by_date.values():
             for task in day_tasks:
                 reservation_id = task["reservation_id"]
                 status = "Completed" if task["completed"] else "Scheduled"
-                st.markdown(f"**{date.fromisoformat(task['checkout']):%d %b} · {task['scheduled_time']}**")
-                st.caption(f"{status} · Booking #{reservation_id}")
-                if not task["completed"] and st.button("Mark complete", key=f"complete_cleaning_{reservation_id}"):
-                    complete_checkout_cleaning(active_property_id, reservation_id)
-                    st.rerun()
+                booking = bookings_by_id.get(reservation_id)
+                guest_name = booking["guest_name"] if booking else f"Booking #{reservation_id}"
+                st.text(guest_name)
+                st.caption(f"{date.fromisoformat(task['checkout']):%d %b} · {task['scheduled_time']} · {status}")
                 if not task["completed"]:
-                    with st.expander("Edit or cancel cleaning"):
+                    complete_column, edit_column = st.columns([3, 2])
+                    if complete_column.button("Mark complete", key=f"complete_cleaning_{reservation_id}",
+                                              width="stretch"):
+                        complete_checkout_cleaning(active_property_id, reservation_id)
+                        st.rerun()
+                    with edit_column.popover("Edit", icon=":material/edit:", width="stretch"):
                         new_time = st.time_input(
                             "New cleaning time", value=time.fromisoformat(task["scheduled_time"]),
                             step=60, key=f"edit_cleaning_time_{active_property_id}_{reservation_id}",
@@ -1663,6 +1668,7 @@ elif page == "Calendar":
                             if cancel_checkout_cleaning(active_property_id, reservation_id):
                                 st.rerun()
                             st.warning("This cleaning changed. Refresh the page.")
+                st.divider()
 
 
 elif page == "Market":
