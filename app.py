@@ -1150,8 +1150,9 @@ elif page == "Overview":
     active_stays = [r for r in reservations if r["status"] in {"confirmed", "completed"}]
     arrivals_today = [r for r in active_stays if r["checkin"] == today_iso]
     departures_today = [r for r in active_stays if r["checkout"] == today_iso]
+    property_cleanings = get_checkout_cleanings(active_property_id)
     cleanings_today = [
-        task for task in get_checkout_cleanings(active_property_id)
+        task for task in property_cleanings
         if task["checkout"] == today_iso and not task["completed"]
     ]
     st.subheader("Today")
@@ -1186,6 +1187,36 @@ elif page == "Overview":
         st.button("Open calendar", key="today_cleanings_calendar", width="stretch",
                   on_click=st.session_state.update,
                   args=({"workspace_page": "Calendar", "calendar_target_date": today},))
+
+    cleaning_window_end = (today + timedelta(days=15)).isoformat()
+    scheduled_reservations = {task["reservation_id"] for task in property_cleanings}
+    missing_cleanings = sorted(
+        (reservation for reservation in active_stays
+         if today_iso <= reservation["checkout"] <= cleaning_window_end
+         and reservation["id"] not in scheduled_reservations),
+        key=lambda reservation: (reservation["checkout"], reservation["id"]),
+    )
+    if missing_cleanings:
+        count = len(missing_cleanings)
+        message = ("1 departure in the next 15 days needs a cleaning."
+                   if count == 1 else f"{count} departures in the next 15 days need cleanings.")
+        st.warning(message, icon=":material/cleaning_services:")
+        with st.expander("View departures needing a cleaning"):
+            for reservation in missing_cleanings:
+                st.text(f"{reservation['checkout']} · {reservation['guest_name']}")
+                st.button(
+                    "Schedule cleaning",
+                    key=f"overview_schedule_cleaning_{reservation['id']}",
+                    on_click=st.session_state.update,
+                    args=({"workspace_page": "Bookings",
+                           f"selected_checkout_{active_property_id}": reservation["id"]},),
+                )
+        st.button(
+            "Schedule cleaning", key="overview_missing_cleaning",
+            on_click=st.session_state.update,
+            args=({"workspace_page": "Bookings",
+                   f"selected_checkout_{active_property_id}": missing_cleanings[0]["id"]},),
+        )
 
     cols = st.columns(2)
     cols[0].metric("Blocked date ranges", len(blocks))
