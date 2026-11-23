@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import calendar
+import hashlib
 import math
 import os
 import re
@@ -333,7 +334,21 @@ def render_airbnb_report_import(existing_properties: list[dict], key_prefix: str
     )
     if upload is None:
         return
-    report, errors = parse_airbnb_earnings_export(upload.getvalue(), upload.name)
+    upload_bytes = upload.getvalue()
+    upload_key = (
+        auth_user["id"] if auth_user else "local",
+        upload.name,
+        hashlib.sha256(upload_bytes).hexdigest(),
+        date.today().isoformat(),
+    )
+    parsed_upload = st.session_state.get("_airbnb_parsed_upload")
+    if parsed_upload is None or parsed_upload["key"] != upload_key:
+        parsed_upload = {
+            "key": upload_key,
+            "result": parse_airbnb_earnings_export(upload_bytes, upload.name),
+        }
+        st.session_state["_airbnb_parsed_upload"] = parsed_upload
+    report, errors = parsed_upload["result"]
     if errors:
         st.error("This Airbnb report needs attention before import:")
         for error in errors:
@@ -1729,10 +1744,27 @@ elif page == "Revenue":
         st.caption("A visual revenue dashboard with two charts, KPI cards, monthly totals, booking-source breakdown, daily ledger, and reservation details for the selected year.")
     else:
         st.caption("An Excel workbook with a KPI dashboard and chart, monthly summary, daily revenue ledger, and reservation details for the full selected year.")
-    workbook = build_revenue_workbook(active_property["name"], export_year, reservations, date.today())
-    st.download_button("Download revenue Excel workbook", workbook,
-                       f"staywise-revenue-{export_year}.xlsx",
-                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    export_key = (
+        auth_user["id"] if auth_user else "local",
+        active_property_id, active_property["name"], export_year, date.today().isoformat(),
+        hashlib.sha256(repr(reservations).encode("utf-8")).hexdigest(),
+    )
+    prepared_export = st.session_state.get("_prepared_revenue_export")
+    if prepared_export is None or prepared_export["key"] != export_key:
+        if st.button("Prepare revenue Excel workbook", type="primary"):
+            with st.spinner("Preparing revenue workbook…"):
+                workbook = build_revenue_workbook(
+                    active_property["name"], export_year, reservations, date.today(),
+                )
+            prepared_export = {"key": export_key, "data": workbook}
+            st.session_state["_prepared_revenue_export"] = prepared_export
+    if prepared_export is not None and prepared_export["key"] == export_key:
+        st.download_button(
+            "Download revenue Excel workbook", prepared_export["data"],
+            f"staywise-revenue-{export_year}.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            on_click="ignore",
+        )
 
 
 render_staywise_assistant()
